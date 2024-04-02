@@ -2,7 +2,14 @@
 name = "grossbaby"
 version = "0.1.0"
 edition = "2021"
+authors = ["shua <shua@isthisa.email>", "ddydsz"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+# from https://bevy-cheatbook.github.io/pitfalls/performance.html
+[profile.dev.package."*"]
+opt-level = 3
+[profile.dev]
+opt-level = 1
 
 [dependencies]
+# bevy = "0.13.1"
+bevy = { version = "0.13.1", features = ["dynamic_linking"] }
