@@ -17,3 +17,7 @@ bevy = { version = "0.13.1", features = ["dynamic_linking"] }
 [[bin]]
 name = "jd"
 path = "jd/main.rs"
+
+[[bin]]
+name = "ad"
+path = "ad/main.rs"
