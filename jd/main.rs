@@ -22,7 +22,7 @@ struct DebugUi;
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .insert_resource(ClearColor(Color::rgb(0.1, 0.1, 0.1)))
+        .insert_resource(ClearColor(Color::rgb(0.2, 0.2, 0.2)))
         .insert_resource(DebugInfo::default())
         .add_systems(Startup, setup_graphics)
         .add_systems(
@@ -40,16 +40,16 @@ fn main() {
 
 const MAP: [u8; 8 * 8] = [
     1, 1, 1, 1, 1, 1, 1, 1, // 1
-    1, 0, 0, 0, 0, 0, 0, 1, // 2
+    1, 0, 0, 0, 0, 1, 0, 1, // 2
     1, 0, 0, 0, 0, 0, 0, 1, // 3
-    1, 0, 0, 0, 0, 0, 0, 1, // 4
+    1, 0, 0, 0, 0, 1, 0, 1, // 4
     1, 0, 0, 0, 0, 0, 0, 1, // 5
     1, 0, 0, 0, 0, 0, 0, 1, // 6
     1, 0, 0, 0, 0, 0, 0, 1, // 7
     1, 1, 1, 1, 1, 1, 1, 1, // 8
 ];
 
-fn setup_graphics(mut command: Commands) {
+fn setup_graphics(mut command: Commands, assets: Res<AssetServer>) {
     command.spawn(Camera2dBundle::default());
     command.spawn((
         DebugUi,
@@ -70,14 +70,16 @@ fn setup_graphics(mut command: Commands) {
         Velocity::default(),
         SpriteBundle {
             sprite: Sprite {
-                color: Color::rgb(1., 0., 0.),
+                color: Color::RED,
+                custom_size: Some(Vec2::new(0.8, 1.)),
                 ..default()
             },
             transform: Transform {
                 translation: Vec3::new(0., 0., 0.),
-                scale: Vec3::new(50., 50., 1.),
+                scale: Vec3::new(45., 45., 1.),
                 ..default()
             },
+            texture: assets.load("baby.png"),
             ..default()
         },
     ));
@@ -154,7 +156,6 @@ fn check_collide(
             continue;
         }
 
-        let aabb = Aabb2d::new(t.translation.xy() + **v, t.scale.xy() / 2.);
         let (dir, len) = Direction2d::new_and_length(v.xy()).unwrap();
         let mut aabb_cast = AabbCast2d::new(
             Aabb2d::new(Vec2::default(), t.scale.xy() / 2.),
@@ -181,7 +182,7 @@ fn check_collide(
         }
 
         if !collisions.is_empty() {
-            **v = (**v) * ((aabb_cast.ray.max - 1.) / v.length());
+            **v = (**v) * ((aabb_cast.ray.max - 0.4) / v.length());
             s.color = Color::rgb(1., 0., 0.);
 
             dbg.text.clear();
