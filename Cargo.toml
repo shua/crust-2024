@@ -13,3 +13,7 @@ opt-level = 1
 [dependencies]
 # bevy = "0.13.1"
 bevy = { version = "0.13.1", features = ["dynamic_linking"] }
+
+[[bin]]
+name = "jd"
+path = "jd/main.rs"
