@@ -1,5 +1,5 @@
 use bevy::{
-    math::bounding::{Aabb2d, AabbCast2d, BoundingVolume, IntersectsVolume},
+    math::bounding::{Aabb2d, BoundingVolume, IntersectsVolume},
     prelude::*,
 };
 
@@ -7,6 +7,8 @@ use bevy::{
 struct Control;
 #[derive(Component)]
 struct Collide;
+#[derive(Resource)]
+struct UpdateRemainder(f32, bool);
 #[derive(Component, Default, Deref, DerefMut)]
 struct Velocity(Vec2);
 
@@ -24,6 +26,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .insert_resource(ClearColor(Color::rgb(0.2, 0.2, 0.2)))
         .insert_resource(DebugInfo::default())
+        .insert_resource(UpdateRemainder(0., false))
         .add_systems(Startup, setup_graphics)
         .add_systems(
             Update,
@@ -113,7 +116,6 @@ fn setup_graphics(mut command: Commands, assets: Res<AssetServer>) {
 
 fn check_keys(
     kbd: Res<ButtonInput<KeyCode>>,
-    time: Res<Time>,
     mut exit: EventWriter<bevy::app::AppExit>,
     mut ctl: Query<&mut Velocity, With<Control>>,
 ) {
@@ -136,9 +138,9 @@ fn check_keys(
         vy -= 1.;
     }
 
-    let v = Vec2::new(vx, vy) * time.delta_seconds() * 500.;
+    let v = Vec2::new(vx, vy);
     for mut c in &mut ctl {
-        c.0 = v;
+        c.0 = v * 5.;
     }
 }
 
@@ -147,6 +149,8 @@ fn check_keys(
 //
 // this is not working correctly as it sees collisions where it shouldn't
 fn check_collide(
+    time: Res<Time>,
+    mut update_rem: ResMut<UpdateRemainder>,
     mut ctl: Query<(Entity, &Transform, &mut Velocity, &mut Sprite), With<Control>>,
     col: Query<(Entity, &Transform), With<Collide>>,
     mut dbg: ResMut<DebugInfo>,
@@ -156,47 +160,73 @@ fn check_collide(
             continue;
         }
 
-        let (dir, len) = Direction2d::new_and_length(v.xy()).unwrap();
-        let mut aabb_cast = AabbCast2d::new(
-            Aabb2d::new(Vec2::default(), t.scale.xy() / 2.),
-            t.translation.xy(),
-            dir,
-            len,
-        );
-        let mut collisions = vec![];
-        for (ec, col) in &col {
-            if ec == e {
-                continue;
+        let (mut dt, mut push_vert) = (update_rem.0, update_rem.1);
+        dt += time.delta_seconds() * 60.;
+        let mut aabb = Aabb2d::new(t.translation.xy(), t.scale.xy() / 2.);
+        while dt > 1. {
+            let mut collisions = vec![];
+            aabb = Aabb2d::new(aabb.center() + v.xy(), aabb.half_size());
+            for (ec, col) in &col {
+                if ec == e {
+                    continue;
+                }
+
+                let col_aabb = Aabb2d::new(col.translation.xy(), col.scale.xy() / 2.);
+                if aabb.intersects(&col_aabb) {
+                    collisions.push((col_aabb, (aabb.center(), col_aabb.center() - aabb.center())));
+                    let left = col_aabb.min.x - aabb.max.x;
+                    let right = col_aabb.max.x - aabb.min.x;
+                    let up = col_aabb.max.y - aabb.min.y;
+                    let down = col_aabb.min.y - aabb.max.y;
+                    let horz = if left.abs() < right.abs() {
+                        left
+                    } else {
+                        right
+                    };
+                    let vert = if up.abs() < down.abs() { up } else { down };
+                    let push = match horz.abs().total_cmp(&vert.abs()) {
+                        std::cmp::Ordering::Greater => Vec2::new(0., vert),
+                        std::cmp::Ordering::Less => Vec2::new(horz, 0.),
+                        std::cmp::Ordering::Equal => {
+                            // stuck on a corner, if we always choose one or the other than there will be no progress
+                            // so we choose vertical half the time and horizontal the other half
+                            push_vert = !push_vert;
+                            if push_vert {
+                                Vec2::new(0., vert)
+                            } else {
+                                Vec2::new(horz, 0.)
+                            }
+                        }
+                    };
+                    aabb = Aabb2d::new(aabb.center() + push, aabb.half_size());
+                }
             }
-            let col_aabb = Aabb2d::new(col.translation.xy(), col.scale.xy() / 2.);
-            if let Some(dist) = aabb_cast.aabb_collision_at(col_aabb) {
-                collisions.push((
-                    col_aabb,
-                    (
-                        t.translation.xy(),
-                        v.normalize() * (dist + (t.scale.max_element() / 2.)),
-                    ),
-                ));
-                aabb_cast.ray.max = dist;
+
+            if !collisions.is_empty() {
+                s.color = Color::rgb(1., 0., 0.);
+
+                dbg.text.clear();
+                dbg.collisions = collisions;
+                dbg.ctl_aabb = Some(Aabb2d::new(t.translation.xy() + **v, t.scale.xy() / 2.));
+            } else {
+                s.color = Color::rgb(0., 0., 1.);
             }
+
+            dt -= 1.;
         }
-
-        if !collisions.is_empty() {
-            **v = (**v) * ((aabb_cast.ray.max - 0.4) / v.length());
-            s.color = Color::rgb(1., 0., 0.);
-
-            dbg.text.clear();
-            dbg.collisions = collisions;
-            dbg.ctl_aabb = Some(Aabb2d::new(t.translation.xy() + **v, t.scale.xy() / 2.));
-        } else {
-            s.color = Color::rgb(0., 0., 1.);
+        let tnew = aabb.center();
+        **v = tnew - t.translation.xy();
+        if (dt, push_vert) != (update_rem.0, update_rem.1) {
+            update_rem.0 = dt;
+            update_rem.1 = push_vert;
         }
     }
 }
 
 fn update_movement(mut movers: Query<(&mut Transform, &Velocity)>) {
     for (mut t, v) in &mut movers {
-        t.translation += Vec3::new(v.0.x, v.0.y, 0.);
+        t.translation.x += v.x;
+        t.translation.y += v.y;
     }
 }
 
