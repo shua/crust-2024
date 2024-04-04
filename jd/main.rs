@@ -1,6 +1,8 @@
 use bevy::{
+    app::AppExit,
     math::bounding::{Aabb2d, BoundingVolume, IntersectsVolume},
     prelude::*,
+    window::PrimaryWindow,
 };
 
 #[derive(Component)]
@@ -15,12 +17,17 @@ struct Movement {
     force: Vec2,
     out: Vec2,
 }
+#[derive(Component, Deref, DerefMut, Clone, Copy, Debug)]
+struct Tile(u8);
+#[derive(Event)]
+struct Quit;
 
 #[derive(Resource, Default)]
 struct DebugInfo {
     text: Vec<TextSection>,
     collisions: Vec<(Aabb2d, (Vec2, Vec2))>,
     ctl_aabb: Option<Aabb2d>,
+    cursor: Vec2,
 }
 #[derive(Component)]
 struct DebugUi;
@@ -31,32 +38,40 @@ fn main() {
         .insert_resource(ClearColor(Color::rgb(0.2, 0.2, 0.2)))
         .insert_resource(DebugInfo::default())
         .insert_resource(UpdateRemainder(0., false))
+        .add_event::<Quit>()
         .add_systems(Startup, setup_graphics)
         .add_systems(
             Update,
             (
-                check_keys,    //
+                check_kbd,     //
                 check_collide, //
                 update_movement,
             )
                 .chain(),
         )
-        .add_systems(Update, draw_debug)
+        .add_systems(Update, (check_mouse, draw_debug, on_quit))
         .run();
 }
 
-const MAP: [u8; 8 * 8] = [
-    1, 1, 1, 1, 1, 1, 1, 1, // 1
-    1, 0, 0, 0, 0, 0, 0, 1, // 2
-    1, 0, 0, 0, 0, 0, 0, 1, // 3
-    1, 0, 0, 0, 0, 0, 0, 1, // 4
-    1, 0, 0, 0, 0, 1, 0, 1, // 5
-    1, 0, 0, 0, 0, 0, 0, 1, // 6
-    1, 0, 0, 0, 0, 1, 0, 1, // 7
-    1, 1, 1, 1, 1, 1, 1, 1, // 8
-];
+const MAP: (Vec2, [u8; 8 * 8]) = (
+    Vec2::new(-4. * 50., -4. * 50.),
+    [
+        1, 1, 1, 1, 1, 1, 1, 1, // 1
+        1, 0, 0, 0, 0, 0, 0, 1, // 2
+        1, 0, 0, 0, 0, 0, 0, 1, // 3
+        1, 0, 0, 0, 0, 0, 0, 1, // 4
+        1, 0, 0, 0, 0, 1, 0, 1, // 5
+        1, 0, 0, 0, 0, 0, 0, 1, // 6
+        1, 0, 0, 0, 0, 1, 0, 1, // 7
+        1, 1, 1, 1, 1, 1, 1, 1, // 8
+    ],
+);
 
-fn setup_graphics(mut command: Commands, assets: Res<AssetServer>) {
+fn setup_graphics(
+    mut command: Commands,
+    assets: Res<AssetServer>,
+    mut win: Query<&mut Window, With<PrimaryWindow>>,
+) {
     command.spawn(Camera2dBundle::default());
     command.spawn((
         DebugUi,
@@ -93,20 +108,19 @@ fn setup_graphics(mut command: Commands, assets: Res<AssetServer>) {
 
     for y in 0..8 {
         for x in 0..8 {
-            if MAP[(7 - y) * 8 + x] == 1 {
+            let t = MAP.1[(7 - y) * 8 + x];
+            if t != 0 {
                 command.spawn((
                     Collide,
+                    Tile(t),
                     SpriteBundle {
                         sprite: Sprite {
                             color: Color::rgb(0.5, 0.2, 0.7),
                             ..default()
                         },
                         transform: Transform {
-                            translation: Vec3::new(
-                                (x as f32 - 4.) * 50.,
-                                (y as f32 - 4.) * 50.,
-                                0.0,
-                            ),
+                            translation: MAP.0.extend(0.)
+                                + Vec3::new(x as f32 * 50., y as f32 * 50., 0.),
                             scale: Vec3::new(50., 50., 1.),
                             ..default()
                         },
@@ -116,15 +130,20 @@ fn setup_graphics(mut command: Commands, assets: Res<AssetServer>) {
             }
         }
     }
+
+    for mut win in &mut win {
+        win.cursor.icon = CursorIcon::Pointer;
+        win.cursor.visible = true;
+    }
 }
 
-fn check_keys(
+fn check_kbd(
     kbd: Res<ButtonInput<KeyCode>>,
-    mut exit: EventWriter<bevy::app::AppExit>,
+    mut quit: EventWriter<Quit>,
     mut ctl: Query<&mut Movement, With<Control>>,
 ) {
     if kbd.pressed(KeyCode::Escape) {
-        exit.send(bevy::app::AppExit);
+        quit.send(Quit);
     }
 
     let mut vx = 0.;
@@ -145,6 +164,55 @@ fn check_keys(
     let v = Vec2::new(vx, vy);
     for mut c in &mut ctl {
         c.ctl = v * 5.;
+    }
+}
+
+fn check_mouse(
+    mouse: Res<ButtonInput<MouseButton>>,
+    win: Query<&Window, With<PrimaryWindow>>,
+    cam: Query<(&Camera, &GlobalTransform)>,
+    mut tiles: Query<(Entity, &Transform, &mut Sprite), With<Tile>>,
+    mut commands: Commands,
+    mut dbg: ResMut<DebugInfo>,
+) {
+    let (cam, cam_trans) = cam.single();
+    let Some(cursor) = win.single().cursor_position() else {
+        return;
+    };
+    let Some(cursor) = cam.viewport_to_world_2d(cam_trans, cursor) else {
+        return;
+    };
+
+    dbg.cursor = cursor;
+
+    if mouse.just_pressed(MouseButton::Left) {
+        let cursor_pt = Aabb2d::new(cursor, Vec2::ZERO);
+        for (e, tile, _) in &mut tiles {
+            let tile = Aabb2d::new(tile.translation.xy(), tile.scale.xy() / 2.);
+            if tile.contains(&cursor_pt) {
+                commands.get_entity(e).unwrap().despawn();
+                return;
+            }
+        }
+
+        // no tile, need to insert
+        let tile_pos = (cursor / 50.).round() * 50.;
+        commands.spawn((
+            Collide,
+            Tile(1),
+            SpriteBundle {
+                sprite: Sprite {
+                    color: Color::rgb(0.5, 0.2, 0.7),
+                    ..default()
+                },
+                transform: Transform {
+                    translation: tile_pos.extend(0.),
+                    scale: Vec3::new(50., 50., 1.),
+                    ..default()
+                },
+                ..default()
+            },
+        ));
     }
 }
 
@@ -254,6 +322,8 @@ fn draw_debug(dbg: Res<DebugInfo>, mut gizmos: Gizmos, mut ui: Query<&mut Text, 
             ui.sections = dbg.text.clone();
         }
     }
+    let cursor = (dbg.cursor / 50.).round() * 50.;
+    gizmos.rect_2d(cursor, 0., Vec2::new(50., 50.), Color::GREEN);
     if !dbg.collisions.is_empty() {
         for (aabb, (origin, ray)) in dbg.collisions.iter() {
             gizmos.rect_2d(aabb.center(), 0., aabb.half_size() * 2., Color::RED);
@@ -262,5 +332,55 @@ fn draw_debug(dbg: Res<DebugInfo>, mut gizmos: Gizmos, mut ui: Query<&mut Text, 
         if let Some(aabb) = &dbg.ctl_aabb {
             gizmos.rect_2d(aabb.center(), 0., aabb.half_size() * 2., Color::GREEN);
         }
+    }
+}
+
+fn on_quit(
+    quit: EventReader<Quit>,
+    tiles: Query<(&Transform, &Tile), With<Tile>>,
+    mut exit: EventWriter<AppExit>,
+) {
+    if !quit.is_empty() {
+        let mut data: Vec<_> = tiles
+            .iter()
+            .map(|(t, s)| (t.translation.xy(), *s))
+            .collect();
+        data.sort_by(|(t1, _), (t2, _)| match t1.y.total_cmp(&t2.y) {
+            std::cmp::Ordering::Equal => t1.x.total_cmp(&t2.x),
+            c => c,
+        });
+        let mut min = data[0].0;
+        let mut max = data[data.len() - 1].0;
+        for (d, _) in &data {
+            if d.x < min.x {
+                min.x = d.x;
+            }
+            if d.x > max.x {
+                max.x = d.x;
+            }
+        }
+
+        let width = ((max.x - min.x) / 50.) as usize + 1;
+        let height = ((max.y - min.y) / 50.) as usize + 1;
+        println!("const MAP: (Vec2, usize, [u8; {width} * {height}]) = (");
+        println!("  Vec2::new({:?}, {:?}),", min.x.floor(), min.y.floor());
+        println!("  {width},");
+        println!("  [");
+        let mut map = vec![vec![0u8; width]; height];
+        for (trans, tile) in data {
+            let trans = (trans - min) / 50.;
+            map[trans.y as usize][trans.x as usize] = tile.0;
+        }
+        for (y, row) in map.into_iter().rev().enumerate() {
+            print!("    ");
+            for t in row {
+                print!("{t}, ");
+            }
+            println!(" // {y}");
+        }
+        println!("  ],");
+        println!(");");
+
+        exit.send(AppExit);
     }
 }
