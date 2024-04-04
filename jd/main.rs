@@ -9,8 +9,12 @@ struct Control;
 struct Collide;
 #[derive(Resource)]
 struct UpdateRemainder(f32, bool);
-#[derive(Component, Default, Deref, DerefMut)]
-struct Velocity(Vec2);
+#[derive(Component, Default)]
+struct Movement {
+    ctl: Vec2,
+    force: Vec2,
+    out: Vec2,
+}
 
 #[derive(Resource, Default)]
 struct DebugInfo {
@@ -43,12 +47,12 @@ fn main() {
 
 const MAP: [u8; 8 * 8] = [
     1, 1, 1, 1, 1, 1, 1, 1, // 1
-    1, 0, 0, 0, 0, 1, 0, 1, // 2
+    1, 0, 0, 0, 0, 0, 0, 1, // 2
     1, 0, 0, 0, 0, 0, 0, 1, // 3
-    1, 0, 0, 0, 0, 1, 0, 1, // 4
-    1, 0, 0, 0, 0, 0, 0, 1, // 5
+    1, 0, 0, 0, 0, 0, 0, 1, // 4
+    1, 0, 0, 0, 0, 1, 0, 1, // 5
     1, 0, 0, 0, 0, 0, 0, 1, // 6
-    1, 0, 0, 0, 0, 0, 0, 1, // 7
+    1, 0, 0, 0, 0, 1, 0, 1, // 7
     1, 1, 1, 1, 1, 1, 1, 1, // 8
 ];
 
@@ -70,7 +74,7 @@ fn setup_graphics(mut command: Commands, assets: Res<AssetServer>) {
     command.spawn((
         Control,
         Collide,
-        Velocity::default(),
+        Movement::default(),
         SpriteBundle {
             sprite: Sprite {
                 color: Color::RED,
@@ -89,7 +93,7 @@ fn setup_graphics(mut command: Commands, assets: Res<AssetServer>) {
 
     for y in 0..8 {
         for x in 0..8 {
-            if MAP[y * 8 + x] == 1 {
+            if MAP[(7 - y) * 8 + x] == 1 {
                 command.spawn((
                     Collide,
                     SpriteBundle {
@@ -117,7 +121,7 @@ fn setup_graphics(mut command: Commands, assets: Res<AssetServer>) {
 fn check_keys(
     kbd: Res<ButtonInput<KeyCode>>,
     mut exit: EventWriter<bevy::app::AppExit>,
-    mut ctl: Query<&mut Velocity, With<Control>>,
+    mut ctl: Query<&mut Movement, With<Control>>,
 ) {
     if kbd.pressed(KeyCode::Escape) {
         exit.send(bevy::app::AppExit);
@@ -140,7 +144,7 @@ fn check_keys(
 
     let v = Vec2::new(vx, vy);
     for mut c in &mut ctl {
-        c.0 = v * 5.;
+        c.ctl = v * 5.;
     }
 }
 
@@ -151,12 +155,13 @@ fn check_keys(
 fn check_collide(
     time: Res<Time>,
     mut update_rem: ResMut<UpdateRemainder>,
-    mut ctl: Query<(Entity, &Transform, &mut Velocity, &mut Sprite), With<Control>>,
+    mut ctl: Query<(Entity, &Transform, &mut Movement, &mut Sprite), With<Control>>,
     col: Query<(Entity, &Transform), With<Collide>>,
     mut dbg: ResMut<DebugInfo>,
 ) {
     for (e, t, mut v, mut s) in &mut ctl {
-        if v.0 == Vec2::ZERO {
+        if v.ctl + v.force == Vec2::ZERO {
+            v.out = Vec2::ZERO;
             continue;
         }
 
@@ -165,7 +170,8 @@ fn check_collide(
         let mut aabb = Aabb2d::new(t.translation.xy(), t.scale.xy() / 2.);
         while dt > 1. {
             let mut collisions = vec![];
-            aabb = Aabb2d::new(aabb.center() + v.xy(), aabb.half_size());
+            v.force += Vec2::new(0., -9.8 / 60.);
+            aabb = Aabb2d::new(aabb.center() + v.ctl.xy() + v.force.xy(), aabb.half_size());
             for (ec, col) in &col {
                 if ec == e {
                     continue;
@@ -185,15 +191,23 @@ fn check_collide(
                     };
                     let vert = if up.abs() < down.abs() { up } else { down };
                     let push = match horz.abs().total_cmp(&vert.abs()) {
-                        std::cmp::Ordering::Greater => Vec2::new(0., vert),
-                        std::cmp::Ordering::Less => Vec2::new(horz, 0.),
+                        std::cmp::Ordering::Greater => {
+                            v.force.y = 0.;
+                            Vec2::new(0., vert)
+                        }
+                        std::cmp::Ordering::Less => {
+                            v.force.x = 0.;
+                            Vec2::new(horz, 0.)
+                        }
                         std::cmp::Ordering::Equal => {
                             // stuck on a corner, if we always choose one or the other than there will be no progress
                             // so we choose vertical half the time and horizontal the other half
                             push_vert = !push_vert;
                             if push_vert {
+                                v.force.y = 0.;
                                 Vec2::new(0., vert)
                             } else {
+                                v.force.x = 0.;
                                 Vec2::new(horz, 0.)
                             }
                         }
@@ -206,8 +220,12 @@ fn check_collide(
                 s.color = Color::rgb(1., 0., 0.);
 
                 dbg.text.clear();
+                dbg.text.push(TextSection::new(
+                    format!("vctl: {:?}, vforce: {:?}\n", v.ctl, v.force),
+                    default(),
+                ));
                 dbg.collisions = collisions;
-                dbg.ctl_aabb = Some(Aabb2d::new(t.translation.xy() + **v, t.scale.xy() / 2.));
+                dbg.ctl_aabb = Some(Aabb2d::new(t.translation.xy() + v.ctl, t.scale.xy() / 2.));
             } else {
                 s.color = Color::rgb(0., 0., 1.);
             }
@@ -215,7 +233,7 @@ fn check_collide(
             dt -= 1.;
         }
         let tnew = aabb.center();
-        **v = tnew - t.translation.xy();
+        v.out = tnew - t.translation.xy();
         if (dt, push_vert) != (update_rem.0, update_rem.1) {
             update_rem.0 = dt;
             update_rem.1 = push_vert;
@@ -223,10 +241,10 @@ fn check_collide(
     }
 }
 
-fn update_movement(mut movers: Query<(&mut Transform, &Velocity)>) {
+fn update_movement(mut movers: Query<(&mut Transform, &Movement)>) {
     for (mut t, v) in &mut movers {
-        t.translation.x += v.x;
-        t.translation.y += v.y;
+        t.translation.x += v.out.x;
+        t.translation.y += v.out.y;
     }
 }
 
