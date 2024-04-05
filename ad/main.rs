@@ -4,6 +4,9 @@ use bevy::{
     render::camera::ScalingMode,
 };
 
+#[derive(Component)]
+struct DebugText;
+
 fn main() {
     App::new()
         .add_plugins(
@@ -17,10 +20,11 @@ fn main() {
             },
         ))
         .add_systems(Startup, setup)
-        .add_systems(Update, (sprite_animation, sound_player, volume))
+        .add_systems(Update, (sprite_animation, sound_player, volume, draw_debug))
         .run();
 }
 
+// ------------------------------- Sprite Animation -------------------------------
 // Indices representing a sprite sheet
 #[derive(Component)]
 struct AnimationIndices {
@@ -59,7 +63,7 @@ impl PingPongState {
 #[derive(Component, Deref, DerefMut)]
 struct SpriteAnimationTimer(Timer);
 
-// Sounds
+// ------------------------------- Sound -------------------------------
 #[derive(Component)]
 enum Sound {
     Background,
@@ -69,14 +73,18 @@ enum Sound {
 #[derive(Component)]
 struct SoundPlayTimer(Timer);
 
+// ------------------------------- Intro Cutscene -------------------------------
+// background soundscape starts playing but fades in quickly
 const KEYFRAME_BG_MUSIC_VOL_MAX: f32 = 3.0;
 
+// car moves into frame
 const KEYFRAME_CAR_MOVE_START: f32 = 5.0;
-const KEYFRAME_CAR_MOVE_STOP: f32 = 10.0;
 const KEYFRAME_CAR_SND_IDLE_START: f32 = 5.0;
-const KEYFRAME_CAR_SND_IDLE_VOL_MAX: f32 = 8.0;
 
 // car stops
+const KEYFRAME_CAR_MOVE_STOP: f32 = 10.0;
+const KEYFRAME_CAR_SND_IDLE_VOL_MAX: f32 = 8.0;
+
 // brake sound
 // window roll 
 // baby thrown
@@ -103,6 +111,20 @@ fn setup(
         ..default()
        }, 
         ..default()});
+
+    commands.spawn((
+        DebugText,
+        Text2dBundle {
+            text: Text::from_section("hello, baby!", TextStyle::default()),
+            text_anchor: bevy::sprite::Anchor::TopLeft,
+            transform: Transform {
+                translation: Vec3::new(-380., 280., 10.),
+                scale: Vec3::ONE,
+                ..default()
+            },
+            ..default()
+        },
+    ));
 
     // Scene
     commands.spawn(SpriteBundle {
@@ -148,9 +170,6 @@ fn setup(
         Sound::CarIdle,
         SoundPlayTimer(Timer::from_seconds(KEYFRAME_CAR_SND_IDLE_START, TimerMode::Once)),
     ));
-
-    
-
 }
 
 fn spawn_car(
@@ -277,6 +296,12 @@ fn sprite_animation(
                 },
             }
         }
+    }
+}
+
+fn draw_debug(mut text: Query<&mut Text, With<DebugText>>, time: Res<Time>) {
+    for mut t in &mut text {
+        *t = Text::from_section(format!("time: {:.3}", time.elapsed_seconds()), TextStyle::default());
     }
 }
 
