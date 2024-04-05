@@ -18,7 +18,7 @@ fn main() {
             },
         ))
         .add_systems(Startup, setup)
-        .add_systems(Update, (sprite_animation))
+        .add_systems(Update, sprite_animation)
         .run();
 }
 
@@ -29,9 +29,36 @@ struct AnimationIndices {
     last: usize,
 }
 
+#[derive(Component)]
+enum SpriteAnimationType {
+    // play to end, repeat
+    // 123123123
+    Linear,   
+
+    // play to end, go backwards, repeat
+    // 123212321
+    PingPong(PingPongState), 
+}
+
+impl SpriteAnimationType {
+    fn new_ping_pong() -> Self {
+        Self::PingPong(PingPongState::default())
+    }
+}
+
+enum PingPongState {
+    Forward,
+    Backward,
+}
+
+impl PingPongState {
+    fn default() -> Self {
+        PingPongState::Forward
+    }
+}
+
 #[derive(Component, Deref, DerefMut)]
 struct SpriteAnimationTimer(Timer);
-
 
 fn setup(
     mut commands: Commands, 
@@ -69,6 +96,10 @@ fn setup(
     });
 
     // Car
+    let layout = TextureAtlasLayout::from_grid(Vec2::new(170.,100.), 3, 4, None, None);
+    let texture_atlas_layout = texture_atlas_layouts.add(layout);
+    let sprite_animation_indices = AnimationIndices{ first: 1, last: 6 };
+
     let car_name = Name::new("car");
     let mut car_animation = AnimationClip::default();
     car_animation.add_curve_to_path(
@@ -84,13 +115,9 @@ fn setup(
             interpolation: Interpolation::Linear,
         },
     );
-
     let mut player = AnimationPlayer::default();
     player.play(animations.add(car_animation));
-
-    let layout = TextureAtlasLayout::from_grid(Vec2::new(170.,100.), 3, 4, None, None);
-    let texture_atlas_layout = texture_atlas_layouts.add(layout);
-    let sprite_animation_indices = AnimationIndices{ first: 1, last: 6 };
+    
     commands.spawn((
         car_name,
         SpriteBundle {
@@ -108,25 +135,81 @@ fn setup(
             index: sprite_animation_indices.first,
         },
         sprite_animation_indices,
+        SpriteAnimationType::Linear,
         player,
         SpriteAnimationTimer(Timer::from_seconds(0.1, TimerMode::Repeating)),
     ));
 
-    
+    spawn_baby(commands, asset_server, texture_atlas_layouts);
+
+}
+
+fn spawn_baby(    
+    mut commands: Commands, 
+    asset_server: Res<AssetServer>,
+    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+) {
+    let layout = TextureAtlasLayout::from_grid(Vec2::new(251.,377.), 3, 2, None, None);
+    let texture_atlas_layout = texture_atlas_layouts.add(layout);
+    let sprite_animation_indices = AnimationIndices{ first: 0, last: 4 };
+
+    commands.spawn((
+        SpriteBundle {
+            texture: asset_server.load("baby-idle-sheet.png"),
+            transform: Transform::from_xyz(-0., -200., 2.)
+                .with_scale(Vec3::ONE * 0.5),
+            sprite: Sprite {
+                flip_x: false,
+                ..default()
+            },
+            ..default()
+        },
+        TextureAtlas {
+            layout: texture_atlas_layout,
+            index: sprite_animation_indices.first,
+        },
+        sprite_animation_indices,
+        SpriteAnimationType::new_ping_pong(),
+        SpriteAnimationTimer(Timer::from_seconds(0.11, TimerMode::Repeating)),
+    ));
 }
 
 fn sprite_animation(
     time: Res<Time>,
-    mut query: Query<(&AnimationIndices, &mut SpriteAnimationTimer, &mut TextureAtlas)>,
+    mut query: Query<(&AnimationIndices, &mut SpriteAnimationType, &mut SpriteAnimationTimer, &mut TextureAtlas)>,
 ) {
-    for (indices, mut timer, mut atlas) in &mut query {
+    for (indices, mut anim_type, mut timer, mut atlas) in &mut query {
         timer.tick(time.delta());
         if timer.just_finished() {
-            atlas.index = if atlas.index == indices.last {
-                indices.first
-            } else {
-                atlas.index + 1
-            };
+            match *anim_type {
+                SpriteAnimationType::Linear => {
+                    atlas.index = if atlas.index == indices.last {
+                        indices.first
+                    } else {
+                        atlas.index + 1
+                    }
+                },
+                SpriteAnimationType::PingPong(ref mut ppstate) => {
+                    match ppstate {
+                        PingPongState::Forward => {
+                            atlas.index = if atlas.index == indices.last {
+                                *ppstate = PingPongState::Backward;
+                                atlas.index - 1
+                            } else {
+                                atlas.index + 1
+                            }
+                        },
+                        PingPongState::Backward => {
+                            atlas.index = if atlas.index == indices.first {
+                                *ppstate = PingPongState::Forward;
+                                atlas.index + 1
+                            } else {
+                                atlas.index - 1
+                            }
+                        },
+                    }
+                },
+            }
         }
     }
 }
