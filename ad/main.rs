@@ -1,7 +1,8 @@
-//! Renders a 2D scene containing a single, moving sprite.
+use std::cmp::min;
 
 use bevy::{
     prelude::*, 
+    audio::Volume,
     render::camera::ScalingMode,
 };
 
@@ -18,7 +19,7 @@ fn main() {
             },
         ))
         .add_systems(Startup, setup)
-        .add_systems(Update, sprite_animation)
+        .add_systems(Update, (sprite_animation, sound_player, volume))
         .run();
 }
 
@@ -60,6 +61,30 @@ impl PingPongState {
 #[derive(Component, Deref, DerefMut)]
 struct SpriteAnimationTimer(Timer);
 
+// Sounds
+#[derive(Component)]
+enum Sound {
+    Background,
+    CarIdle,
+}
+
+#[derive(Component)]
+struct SoundPlayTimer(Timer);
+
+const KEYFRAME_BG_MUSIC_VOL_MAX: f32 = 3.0;
+
+const KEYFRAME_CAR_IDLE_START: f32 = 5.0;
+const KEYFRAME_CAR_IDLE_VOL_MAX: f32 = 8.0;
+
+// car stops
+// brake sound
+// window roll 
+// baby thrown
+// thump
+// car turns around
+// car schreech
+// car sound fades
+
 fn setup(
     mut commands: Commands, 
     asset_server: Res<AssetServer>,
@@ -70,7 +95,8 @@ fn setup(
     commands.spawn(Camera2dBundle {
        projection: OrthographicProjection {
         // When creating our own OrthographicProjection we need to set the far and near
-        // values ourselves. See: https://bevy-cheatbook.github.io/2d/camera.html#caveat-nearfar-values
+        // values ourselves. 
+        // See: https://bevy-cheatbook.github.io/2d/camera.html#caveat-nearfar-values
         far: 1000.,
         near: -1000.,
         scaling_mode: ScalingMode::FixedVertical(600.),
@@ -95,9 +121,34 @@ fn setup(
         ..default()
     });
 
-
     spawn_car(&mut commands, &asset_server, &mut texture_atlas_layouts, &mut animations);
     spawn_baby(&mut commands, &asset_server, &mut texture_atlas_layouts);
+
+    commands.spawn((
+        AudioBundle {
+            source: asset_server.load("sounds/city-background.wav"),
+            settings: PlaybackSettings {
+                paused: false,
+                volume: Volume::ZERO,
+                ..default()
+            }
+        },
+        Sound::Background,
+    ));
+
+    commands.spawn((
+        AudioBundle {
+            source: asset_server.load("sounds/car-idle.wav"),
+            settings: PlaybackSettings {
+                paused: true,
+                ..default()
+            }
+        },
+        Sound::CarIdle,
+        SoundPlayTimer(Timer::from_seconds(KEYFRAME_CAR_IDLE_START, TimerMode::Once)),
+    ));
+
+    
 
 }
 
@@ -222,6 +273,24 @@ fn sprite_animation(
                     }
                 },
             }
+        }
+    }
+}
+
+fn volume(query: Query<(&AudioSink, &Sound)>, time: Res<Time>) {
+    for (sink, sound) in &query {
+        match sound {
+            Sound::Background => sink.set_volume((time.elapsed_seconds() / KEYFRAME_BG_MUSIC_VOL_MAX).min(1.0)),
+            Sound::CarIdle => sink.set_volume((time.elapsed_seconds() / KEYFRAME_CAR_IDLE_VOL_MAX).min(1.0)),
+        }
+    }
+}
+
+fn sound_player(mut query: Query<(&AudioSink, &mut SoundPlayTimer)>, time: Res<Time>) {
+    for (sink, mut sound_play_timer) in &mut query {
+        sound_play_timer.0.tick(time.delta());
+        if sound_play_timer.0.just_finished() {
+            sink.play();
         }
     }
 }

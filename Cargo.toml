@@ -12,7 +12,8 @@ opt-level = 1
 
 [dependencies]
 # bevy = "0.13.1" # for release
-bevy = { version = "0.13.1", features = ["dynamic_linking"] } # for dev
+# enable dynamic linking for dev
+bevy = { version = "0.13.1", features = ["wav", "dynamic_linking"] } 
 # bevy_rapier2d = "0.18.0"
 bevy_editor_pls = "0.8.1"
 
