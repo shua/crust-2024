@@ -95,7 +95,18 @@ fn setup(
         ..default()
     });
 
-    // Car
+
+    spawn_car(&mut commands, &asset_server, &mut texture_atlas_layouts, &mut animations);
+    spawn_baby(&mut commands, &asset_server, &mut texture_atlas_layouts);
+
+}
+
+fn spawn_car(
+    commands: &mut Commands, 
+    asset_server: &Res<AssetServer>,
+    texture_atlas_layouts: &mut ResMut<Assets<TextureAtlasLayout>>,
+    animations: &mut ResMut<Assets<AnimationClip>>,
+) {
     let layout = TextureAtlasLayout::from_grid(Vec2::new(170.,100.), 3, 4, None, None);
     let texture_atlas_layout = texture_atlas_layouts.add(layout);
     let sprite_animation_indices = AnimationIndices{ first: 1, last: 6 };
@@ -139,15 +150,12 @@ fn setup(
         player,
         SpriteAnimationTimer(Timer::from_seconds(0.1, TimerMode::Repeating)),
     ));
-
-    spawn_baby(commands, asset_server, texture_atlas_layouts);
-
 }
 
 fn spawn_baby(    
-    mut commands: Commands, 
-    asset_server: Res<AssetServer>,
-    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+    commands: &mut Commands, 
+    asset_server: &Res<AssetServer>,
+    texture_atlas_layouts: &mut ResMut<Assets<TextureAtlasLayout>>,
 ) {
     let layout = TextureAtlasLayout::from_grid(Vec2::new(251.,377.), 3, 2, None, None);
     let texture_atlas_layout = texture_atlas_layouts.add(layout);
@@ -176,7 +184,11 @@ fn spawn_baby(
 
 fn sprite_animation(
     time: Res<Time>,
-    mut query: Query<(&AnimationIndices, &mut SpriteAnimationType, &mut SpriteAnimationTimer, &mut TextureAtlas)>,
+    mut query: Query<(
+        &AnimationIndices, 
+        &mut SpriteAnimationType, 
+        &mut SpriteAnimationTimer, 
+        &mut TextureAtlas)>,
 ) {
     for (indices, mut anim_type, mut timer, mut atlas) in &mut query {
         timer.tick(time.delta());
