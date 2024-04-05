@@ -2,7 +2,7 @@
 
 use bevy::{
     prelude::*, 
-    render::{camera::ScalingMode},
+    render::camera::ScalingMode,
 };
 
 fn main() {
@@ -20,12 +20,6 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(Update, (sprite_animation))
         .run();
-}
-
-#[derive(Component)]
-enum Direction {
-    Left,
-    Right,
 }
 
 // Indices representing a sprite sheet
@@ -91,7 +85,6 @@ fn setup(
         },
     );
 
-    // Create the animation player, and set it to repeat
     let mut player = AnimationPlayer::default();
     player.play(animations.add(car_animation));
 
@@ -110,7 +103,6 @@ fn setup(
             },
             ..default()
         },
-        Direction::Right,
         TextureAtlas {
             layout: texture_atlas_layout,
             index: sprite_animation_indices.first,
@@ -119,27 +111,8 @@ fn setup(
         player,
         SpriteAnimationTimer(Timer::from_seconds(0.1, TimerMode::Repeating)),
     ));
-}
 
-/// The sprite is moved by changing its translation depending on the time that has passed since
-/// the last frame.
-fn sprite_movement(
-    time: Res<Time>, 
-    mut sprite_position: Query<(&mut Direction, &mut Transform, &mut Sprite)>) {
-    for (mut logo, mut transform, mut sprite) in &mut sprite_position {
-        match *logo {
-            Direction::Left => transform.translation.x -= 150. * time.delta_seconds(),
-            Direction::Right => transform.translation.x += 150. * time.delta_seconds(),
-        }
-
-        if transform.translation.x > 300. {
-            *logo = Direction::Left;
-            sprite.flip_x = true;
-        } else if transform.translation.x < -300. {
-            *logo = Direction::Right;
-            sprite.flip_x = false;
-        }
-    }
+    
 }
 
 fn sprite_animation(
