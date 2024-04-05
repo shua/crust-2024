@@ -71,8 +71,10 @@ struct SoundPlayTimer(Timer);
 
 const KEYFRAME_BG_MUSIC_VOL_MAX: f32 = 3.0;
 
-const KEYFRAME_CAR_IDLE_START: f32 = 5.0;
-const KEYFRAME_CAR_IDLE_VOL_MAX: f32 = 8.0;
+const KEYFRAME_CAR_MOVE_START: f32 = 5.0;
+const KEYFRAME_CAR_MOVE_STOP: f32 = 10.0;
+const KEYFRAME_CAR_SND_IDLE_START: f32 = 5.0;
+const KEYFRAME_CAR_SND_IDLE_VOL_MAX: f32 = 8.0;
 
 // car stops
 // brake sound
@@ -139,11 +141,12 @@ fn setup(
             source: asset_server.load("sounds/car-idle.wav"),
             settings: PlaybackSettings {
                 paused: true,
+                mode: bevy::audio::PlaybackMode::Loop,
                 ..default()
             }
         },
         Sound::CarIdle,
-        SoundPlayTimer(Timer::from_seconds(KEYFRAME_CAR_IDLE_START, TimerMode::Once)),
+        SoundPlayTimer(Timer::from_seconds(KEYFRAME_CAR_SND_IDLE_START, TimerMode::Once)),
     ));
 
     
@@ -167,9 +170,11 @@ fn spawn_car(
             parts: vec![car_name.clone()],
         },
         VariableCurve {
-            keyframe_timestamps: vec![0.0, 6.0],
+            keyframe_timestamps: vec![
+                KEYFRAME_CAR_MOVE_START, 
+                KEYFRAME_CAR_MOVE_STOP],
             keyframes: Keyframes::Translation(vec![
-                Vec3::new(500., -70., 1.),
+                Vec3::new(700., -50., 1.),
                 Vec3::new(-50., -150., 1.),
             ]),
             interpolation: Interpolation::Linear,
@@ -182,7 +187,7 @@ fn spawn_car(
         car_name,
         SpriteBundle {
             texture: asset_server.load("car-sheet.png"),
-            transform: Transform::from_xyz(-200., -150., 1.)
+            transform: Transform::from_xyz(700., -50., 1.)
                 .with_scale(Vec3::ONE * 1.5),
             sprite: Sprite {
                 flip_x: true,
@@ -279,8 +284,26 @@ fn volume(query: Query<(&AudioSink, &Sound)>, time: Res<Time>) {
     for (sink, sound) in &query {
         match sound {
             Sound::Background => sink.set_volume((time.elapsed_seconds() / KEYFRAME_BG_MUSIC_VOL_MAX).min(1.0)),
-            Sound::CarIdle => sink.set_volume((time.elapsed_seconds() / KEYFRAME_CAR_IDLE_VOL_MAX).min(1.0)),
+            Sound::CarIdle => sink.set_volume(
+                inv_lerp(
+                    KEYFRAME_CAR_SND_IDLE_START, 
+                    KEYFRAME_CAR_SND_IDLE_VOL_MAX, 
+                    time.elapsed_seconds()
+                )
+            ),
         }
+    }
+}
+
+// Clamped inverse LERP 
+// https://www.gamedev.net/articles/programming/general-and-gameplay-programming/inverse-lerp-a-super-useful-yet-often-overlooked-function-r5230/
+fn inv_lerp(a: f32, b: f32, x: f32) -> f32 {
+    if x < a {
+        0.
+    } else if x > b {
+        1.
+    } else {
+        (x - a) / (b - a)
     }
 }
 
