@@ -21,6 +21,8 @@ struct Movement {
 struct Tile(u8);
 #[derive(Event)]
 struct Quit;
+#[derive(Resource, Default, Deref)]
+struct TileSprites(Vec<(Color, Handle<Image>)>);
 
 #[derive(Resource, Default)]
 struct DebugInfo {
@@ -38,6 +40,7 @@ fn main() {
         .insert_resource(ClearColor(Color::rgb(0.2, 0.2, 0.2)))
         .insert_resource(DebugInfo::default())
         .insert_resource(UpdateRemainder(0., false))
+        .insert_resource(TileSprites(vec![(Color::NONE, Handle::default())]))
         .add_event::<Quit>()
         .add_systems(Startup, setup_graphics)
         .add_systems(
@@ -49,12 +52,15 @@ fn main() {
             )
                 .chain(),
         )
-        .add_systems(Update, (check_mouse, draw_debug, on_quit))
+        .add_systems(Update, (check_mouse, on_quit))
+        .add_systems(PostUpdate, draw_debug)
         .run();
 }
 
-const MAP: (Vec2, [u8; 8 * 8]) = (
-    Vec2::new(-4. * 50., -4. * 50.),
+const TILE_SZ: f32 = 50.;
+const MAP: (Vec2, usize, [u8; 8 * 8]) = (
+    Vec2::new(-200., -200.),
+    8,
     [
         1, 1, 1, 1, 1, 1, 1, 1, // 1
         1, 0, 0, 0, 0, 0, 0, 1, // 2
@@ -67,10 +73,34 @@ const MAP: (Vec2, [u8; 8 * 8]) = (
     ],
 );
 
+impl Tile {
+    fn new_bundle(t: u8, pos: Vec3, tile_sprites: &TileSprites) -> (Collide, Tile, SpriteBundle) {
+        (
+            Collide,
+            Tile(t),
+            SpriteBundle {
+                sprite: Sprite {
+                    color: tile_sprites[t as usize].0,
+                    custom_size: Some(Vec2::ONE),
+                    ..default()
+                },
+                transform: Transform {
+                    translation: pos,
+                    scale: Vec3::new(TILE_SZ, TILE_SZ, 1.),
+                    ..default()
+                },
+                texture: tile_sprites[t as usize].1.clone(),
+                ..default()
+            },
+        )
+    }
+}
+
 fn setup_graphics(
     mut command: Commands,
     assets: Res<AssetServer>,
     mut win: Query<&mut Window, With<PrimaryWindow>>,
+    mut tile_sprites: ResMut<TileSprites>,
 ) {
     command.spawn(Camera2dBundle::default());
     command.spawn((
@@ -86,6 +116,7 @@ fn setup_graphics(
             ..default()
         },
     ));
+
     command.spawn((
         Control,
         Collide,
@@ -97,7 +128,7 @@ fn setup_graphics(
                 ..default()
             },
             transform: Transform {
-                translation: Vec3::new(0., 0., 0.),
+                translation: Vec3::new(0., 0., 1.),
                 scale: Vec3::new(45., 45., 1.),
                 ..default()
             },
@@ -106,29 +137,23 @@ fn setup_graphics(
         },
     ));
 
-    for y in 0..8 {
-        for x in 0..8 {
-            let t = MAP.1[(7 - y) * 8 + x];
-            if t != 0 {
-                command.spawn((
-                    Collide,
-                    Tile(t),
-                    SpriteBundle {
-                        sprite: Sprite {
-                            color: Color::rgb(0.5, 0.2, 0.7),
-                            ..default()
-                        },
-                        transform: Transform {
-                            translation: MAP.0.extend(0.)
-                                + Vec3::new(x as f32 * 50., y as f32 * 50., 0.),
-                            scale: Vec3::new(50., 50., 1.),
-                            ..default()
-                        },
-                        ..default()
-                    },
-                ));
-            }
+    tile_sprites.0.extend([
+        (Color::PURPLE, Handle::default()),
+        (Color::ORANGE, Handle::default()),
+        (Color::YELLOW, Handle::default()),
+    ]);
+    let map_origin = MAP.0.extend(0.);
+    for (i, &t) in MAP.2.iter().rev().enumerate() {
+        if t == 0 {
+            continue;
         }
+        let (x, y) = (MAP.1 - (i % MAP.1) - 1, i / MAP.1);
+        let (x, y) = (x as f32 * TILE_SZ, y as f32 * TILE_SZ);
+        command.spawn(Tile::new_bundle(
+            t,
+            map_origin + Vec3::new(x, y, 0.),
+            &tile_sprites,
+        ));
     }
 
     for mut win in &mut win {
@@ -171,7 +196,14 @@ fn check_mouse(
     mouse: Res<ButtonInput<MouseButton>>,
     win: Query<&Window, With<PrimaryWindow>>,
     cam: Query<(&Camera, &GlobalTransform)>,
-    mut tiles: Query<(Entity, &Transform, &mut Sprite), With<Tile>>,
+    mut tiles: Query<(
+        Entity,
+        &Transform,
+        &mut Sprite,
+        &mut Handle<Image>,
+        &mut Tile,
+    )>,
+    tile_sprites: Res<TileSprites>,
     mut commands: Commands,
     mut dbg: ResMut<DebugInfo>,
 ) {
@@ -187,32 +219,25 @@ fn check_mouse(
 
     if mouse.just_pressed(MouseButton::Left) {
         let cursor_pt = Aabb2d::new(cursor, Vec2::ZERO);
-        for (e, tile, _) in &mut tiles {
-            let tile = Aabb2d::new(tile.translation.xy(), tile.scale.xy() / 2.);
-            if tile.contains(&cursor_pt) {
-                commands.get_entity(e).unwrap().despawn();
-                return;
+        for (e, trans, mut s, mut img, mut tile) in &mut tiles {
+            let tile_box = Aabb2d::new(trans.translation.xy(), trans.scale.xy() / 2.);
+            if !tile_box.contains(&cursor_pt) {
+                continue;
             }
+
+            tile.0 = (tile.0 + 1) % (tile_sprites.len() as u8);
+            if tile.0 == 0 {
+                commands.get_entity(e).unwrap().despawn();
+            } else {
+                s.color = tile_sprites.0[tile.0 as usize].0;
+                *img = tile_sprites.0[tile.0 as usize].1.clone();
+            }
+            return;
         }
 
         // no tile, need to insert
-        let tile_pos = (cursor / 50.).round() * 50.;
-        commands.spawn((
-            Collide,
-            Tile(1),
-            SpriteBundle {
-                sprite: Sprite {
-                    color: Color::rgb(0.5, 0.2, 0.7),
-                    ..default()
-                },
-                transform: Transform {
-                    translation: tile_pos.extend(0.),
-                    scale: Vec3::new(50., 50., 1.),
-                    ..default()
-                },
-                ..default()
-            },
-        ));
+        let tile_pos = (cursor / TILE_SZ).round() * TILE_SZ;
+        commands.spawn(Tile::new_bundle(1, tile_pos.extend(0.), &tile_sprites));
     }
 }
 
@@ -313,6 +338,11 @@ fn update_movement(mut movers: Query<(&mut Transform, &Movement)>) {
     for (mut t, v) in &mut movers {
         t.translation.x += v.out.x;
         t.translation.y += v.out.y;
+
+        // kill box
+        if t.translation.y < -1000. {
+            t.translation = Vec3::ZERO;
+        }
     }
 }
 
@@ -322,17 +352,17 @@ fn draw_debug(dbg: Res<DebugInfo>, mut gizmos: Gizmos, mut ui: Query<&mut Text, 
             ui.sections = dbg.text.clone();
         }
     }
-    let cursor = (dbg.cursor / 50.).round() * 50.;
-    gizmos.rect_2d(cursor, 0., Vec2::new(50., 50.), Color::GREEN);
     if !dbg.collisions.is_empty() {
-        for (aabb, (origin, ray)) in dbg.collisions.iter() {
+        for (aabb, (_origin, _ray)) in dbg.collisions.iter() {
             gizmos.rect_2d(aabb.center(), 0., aabb.half_size() * 2., Color::RED);
-            gizmos.ray_2d(*origin, *ray, Color::GREEN);
+            // gizmos.ray_2d(*origin, *ray, Color::GREEN);
         }
         if let Some(aabb) = &dbg.ctl_aabb {
             gizmos.rect_2d(aabb.center(), 0., aabb.half_size() * 2., Color::GREEN);
         }
     }
+    let cursor = (dbg.cursor / TILE_SZ).round() * TILE_SZ;
+    gizmos.rect_2d(cursor, 0., Vec2::new(TILE_SZ, TILE_SZ), Color::GREEN);
 }
 
 fn on_quit(
@@ -360,15 +390,15 @@ fn on_quit(
             }
         }
 
-        let width = ((max.x - min.x) / 50.) as usize + 1;
-        let height = ((max.y - min.y) / 50.) as usize + 1;
+        let width = ((max.x - min.x) / TILE_SZ) as usize + 1;
+        let height = ((max.y - min.y) / TILE_SZ) as usize + 1;
         println!("const MAP: (Vec2, usize, [u8; {width} * {height}]) = (");
         println!("  Vec2::new({:?}, {:?}),", min.x.floor(), min.y.floor());
         println!("  {width},");
         println!("  [");
         let mut map = vec![vec![0u8; width]; height];
         for (trans, tile) in data {
-            let trans = (trans - min) / 50.;
+            let trans = (trans - min) / TILE_SZ;
             map[trans.y as usize][trans.x as usize] = tile.0;
         }
         for (y, row) in map.into_iter().rev().enumerate() {
