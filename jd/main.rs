@@ -2,6 +2,7 @@ use bevy::{
     app::AppExit,
     math::bounding::{Aabb2d, BoundingVolume, IntersectsVolume},
     prelude::*,
+    render::camera::ScalingMode,
     window::PrimaryWindow,
 };
 
@@ -20,27 +21,37 @@ struct Movement {
 #[derive(Component, Deref, DerefMut, Clone, Copy, Debug)]
 struct Tile(u8);
 #[derive(Event)]
-struct Quit;
+struct Quit; // custom quit event used to save map before actual AppExit
 #[derive(Resource, Default, Deref)]
-struct TileSprites(Vec<(Color, Handle<Image>)>);
+struct TileSprites(Vec<(Color, Handle<Image>, Vec2)>);
 
 #[derive(Resource, Default)]
 struct DebugInfo {
     text: Vec<TextSection>,
-    collisions: Vec<(Aabb2d, (Vec2, Vec2))>,
+    collisions: Vec<Aabb2d>,
     ctl_aabb: Option<Aabb2d>,
     cursor: Vec2,
 }
 #[derive(Component)]
 struct DebugUi;
+#[derive(Component)]
+struct MainCamera;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "Baby".into(),
+                resolution: (800., 600.).into(),
+                ..default()
+            }),
+            ..default()
+        }))
+        .add_plugins(bevy_editor_pls::EditorPlugin::new())
         .insert_resource(ClearColor(Color::rgb(0.2, 0.2, 0.2)))
         .insert_resource(DebugInfo::default())
         .insert_resource(UpdateRemainder(0., false))
-        .insert_resource(TileSprites(vec![(Color::NONE, Handle::default())]))
+        .insert_resource(TileSprites(vec![default()]))
         .add_event::<Quit>()
         .add_systems(Startup, setup_graphics)
         .add_systems(
@@ -74,7 +85,11 @@ const MAP: (Vec2, usize, [u8; 8 * 8]) = (
 );
 
 impl Tile {
-    fn new_bundle(t: u8, pos: Vec3, tile_sprites: &TileSprites) -> (Collide, Tile, SpriteBundle) {
+    fn new_bundle(
+        t: u8,
+        pos: Vec3,
+        tile_sprites: &TileSprites,
+    ) -> (Collide, Tile, SpriteBundle, ImageScaleMode) {
         (
             Collide,
             Tile(t),
@@ -82,6 +97,12 @@ impl Tile {
                 sprite: Sprite {
                     color: tile_sprites[t as usize].0,
                     custom_size: Some(Vec2::ONE),
+                    rect: Some(Rect::new(
+                        (pos.x * 100. / TILE_SZ).rem_euclid(1500.),
+                        ((-pos.y) * 100. / TILE_SZ).rem_euclid(1000.),
+                        (pos.x * 100. / TILE_SZ).rem_euclid(1500.) + 100.,
+                        ((-pos.y) * 100. / TILE_SZ).rem_euclid(1000.) + 100.,
+                    )),
                     ..default()
                 },
                 transform: Transform {
@@ -91,6 +112,11 @@ impl Tile {
                 },
                 texture: tile_sprites[t as usize].1.clone(),
                 ..default()
+            },
+            ImageScaleMode::Tiled {
+                tile_x: true,
+                tile_y: true,
+                stretch_value: 0.5,
             },
         )
     }
@@ -102,14 +128,25 @@ fn setup_graphics(
     mut win: Query<&mut Window, With<PrimaryWindow>>,
     mut tile_sprites: ResMut<TileSprites>,
 ) {
-    command.spawn(Camera2dBundle::default());
+    command.spawn((
+        MainCamera,
+        Camera2dBundle {
+            projection: OrthographicProjection {
+                near: 1000.,
+                far: -1000.,
+                scaling_mode: ScalingMode::FixedVertical(600.),
+                ..default()
+            },
+            ..default()
+        },
+    ));
     command.spawn((
         DebugUi,
         Text2dBundle {
             text: Text::default(),
             text_anchor: bevy::sprite::Anchor::TopLeft,
             transform: Transform {
-                translation: Vec3::new(-300., 300., 0.),
+                translation: Vec3::new(-100., 100., 0.),
                 scale: Vec3::ONE,
                 ..default()
             },
@@ -123,7 +160,6 @@ fn setup_graphics(
         Movement::default(),
         SpriteBundle {
             sprite: Sprite {
-                color: Color::RED,
                 custom_size: Some(Vec2::new(0.8, 1.)),
                 ..default()
             },
@@ -138,9 +174,12 @@ fn setup_graphics(
     ));
 
     tile_sprites.0.extend([
-        (Color::PURPLE, Handle::default()),
-        (Color::ORANGE, Handle::default()),
-        (Color::YELLOW, Handle::default()),
+        (
+            Color::default(),
+            assets.load("tiled_garbage.png"),
+            Vec2::new(10., 10.),
+        ),
+        (Color::GREEN, Handle::default(), Vec2::default()),
     ]);
     let map_origin = MAP.0.extend(0.);
     for (i, &t) in MAP.2.iter().rev().enumerate() {
@@ -195,7 +234,7 @@ fn check_kbd(
 fn check_mouse(
     mouse: Res<ButtonInput<MouseButton>>,
     win: Query<&Window, With<PrimaryWindow>>,
-    cam: Query<(&Camera, &GlobalTransform)>,
+    cam: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
     mut tiles: Query<(
         Entity,
         &Transform,
@@ -252,13 +291,13 @@ fn check_collide(
     col: Query<(Entity, &Transform), With<Collide>>,
     mut dbg: ResMut<DebugInfo>,
 ) {
-    for (e, t, mut v, mut s) in &mut ctl {
+    for (e, t, mut v, _) in &mut ctl {
         if v.ctl + v.force == Vec2::ZERO {
             v.out = Vec2::ZERO;
             continue;
         }
 
-        let (mut dt, mut push_vert) = (update_rem.0, update_rem.1);
+        let (mut dt, push_vert) = (update_rem.0, update_rem.1);
         dt += time.delta_seconds() * 60.;
         let mut aabb = Aabb2d::new(t.translation.xy(), t.scale.xy() / 2.);
         while dt > 1. {
@@ -272,55 +311,52 @@ fn check_collide(
 
                 let col_aabb = Aabb2d::new(col.translation.xy(), col.scale.xy() / 2.);
                 if aabb.intersects(&col_aabb) {
-                    collisions.push((col_aabb, (aabb.center(), col_aabb.center() - aabb.center())));
-                    let left = col_aabb.min.x - aabb.max.x;
-                    let right = col_aabb.max.x - aabb.min.x;
-                    let up = col_aabb.max.y - aabb.min.y;
-                    let down = col_aabb.min.y - aabb.max.y;
-                    let horz = if left.abs() < right.abs() {
-                        left
-                    } else {
-                        right
-                    };
-                    let vert = if up.abs() < down.abs() { up } else { down };
-                    let push = match horz.abs().total_cmp(&vert.abs()) {
-                        std::cmp::Ordering::Greater => {
-                            v.force.y = 0.;
-                            Vec2::new(0., vert)
-                        }
-                        std::cmp::Ordering::Less => {
-                            v.force.x = 0.;
-                            Vec2::new(horz, 0.)
-                        }
-                        std::cmp::Ordering::Equal => {
-                            // stuck on a corner, if we always choose one or the other than there will be no progress
-                            // so we choose vertical half the time and horizontal the other half
-                            push_vert = !push_vert;
-                            if push_vert {
-                                v.force.y = 0.;
-                                Vec2::new(0., vert)
-                            } else {
-                                v.force.x = 0.;
-                                Vec2::new(horz, 0.)
-                            }
-                        }
-                    };
-                    aabb = Aabb2d::new(aabb.center() + push, aabb.half_size());
+                    collisions.push(col_aabb);
                 }
             }
 
+            // collisions.sort_by(|c1, c2| {
+            //     (c2.min.y.total_cmp(&c1.min.y)).then(c1.min.x.total_cmp(&c2.min.x))
+            // });
+            collisions.sort_by(|c1, c2| {
+                (c1.center() - aabb.center())
+                    .length_squared()
+                    .total_cmp(&(c2.center() - aabb.center()).length_squared())
+            });
+            for col_aabb in &collisions {
+                if !aabb.intersects(col_aabb) {
+                    continue;
+                }
+                let lt = col_aabb.min.x - aabb.max.x;
+                let rt = col_aabb.max.x - aabb.min.x;
+                let up = col_aabb.max.y - aabb.min.y;
+                let dn = col_aabb.min.y - aabb.max.y;
+                let horz = if lt.abs() < rt.abs() { lt } else { rt };
+                let vert = if dn.abs() < up.abs() { dn } else { up };
+                let push = if horz.abs() > vert.abs() {
+                    // if vert.signum() != v.force.y.signum() {
+                    v.force.y = 0.;
+                    // }
+                    Vec2::new(0., vert)
+                } else {
+                    if horz.signum() != v.force.x.signum() {
+                        v.force.x = 0.;
+                    }
+                    Vec2::new(horz, 0.)
+                };
+                aabb = Aabb2d::new(aabb.center() + push, aabb.half_size());
+            }
             if !collisions.is_empty() {
-                s.color = Color::rgb(1., 0., 0.);
-
                 dbg.text.clear();
                 dbg.text.push(TextSection::new(
-                    format!("vctl: {:?}, vforce: {:?}\n", v.ctl, v.force),
+                    format!(
+                        "vctl: {:?}, vforce: {:?}\npos: {:?}",
+                        v.ctl, v.force, t.translation
+                    ),
                     default(),
                 ));
                 dbg.collisions = collisions;
                 dbg.ctl_aabb = Some(Aabb2d::new(t.translation.xy() + v.ctl, t.scale.xy() / 2.));
-            } else {
-                s.color = Color::rgb(0., 0., 1.);
             }
 
             dt -= 1.;
@@ -353,8 +389,21 @@ fn draw_debug(dbg: Res<DebugInfo>, mut gizmos: Gizmos, mut ui: Query<&mut Text, 
         }
     }
     if !dbg.collisions.is_empty() {
-        for (aabb, (_origin, _ray)) in dbg.collisions.iter() {
-            gizmos.rect_2d(aabb.center(), 0., aabb.half_size() * 2., Color::RED);
+        let n = {
+            let n = dbg.collisions.len() - 1;
+            if n == 0 {
+                1.
+            } else {
+                0.5 / n as f32
+            }
+        };
+        for (i, aabb) in dbg.collisions.iter().enumerate() {
+            gizmos.rect_2d(
+                aabb.center(),
+                0.,
+                aabb.half_size() * 2.,
+                Color::rgb(1. - (i as f32 * n), 0., 0.),
+            );
             // gizmos.ray_2d(*origin, *ray, Color::GREEN);
         }
         if let Some(aabb) = &dbg.ctl_aabb {
