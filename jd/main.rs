@@ -55,7 +55,6 @@ fn main() {
             }),
             ..default()
         }))
-        // .add_plugins(bevy_editor_pls::EditorPlugin::new())
         .insert_resource(ClearColor(Color::rgb(0.2, 0.2, 0.2)))
         .insert_resource(PhysicsTick(0.))
         .insert_resource(TileTypes(vec![default()]))
