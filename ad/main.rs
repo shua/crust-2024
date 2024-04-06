@@ -188,13 +188,14 @@ fn sound_player(mut query: Query<(&AudioSink, &mut SoundPlayTimer)>, time: Res<T
 const BG_MUSIC_VOL_BASE: f32 = 0.8;
 const CAR_IDLE_VOL_BASE: f32 = 0.2;
 
-// background soundscape starts playing but fades in quickly
-const KEYFRAME_BG_MUSIC_VOL_MAX: f32 = 3.0;
+// background sound is already playing when scene starts, but it's muted so we
+// fade into it slightly
+const KEYFRAME_BG_MUSIC_VOL_MAX: f32 = 5.0;
 
 // scene reveal
 const KEYFRAME_SCENE_REVEAL: f32 = 4.0;
 
-// car moves into frame
+// car moves into frame, idle volume gets louder
 const KEYFRAME_CAR_MOVE_START: f32 = 5.0;
 const KEYFRAME_CAR_SND_IDLE_START: f32 = 5.0;
 
@@ -205,14 +206,16 @@ const KEYFRAME_CAR_SND_IDLE_VOL_MAX: f32 = 8.0;
 // brake squeak
 const KEYFRAME_CAR_SND_BRAKE: f32 = 9.75;
 
-// window roll
+// car window roll down
 const KEYFRAME_CAR_SND_WINDOW: f32 = 11.0;
 
-// baby thrown
+// baby thrown from car
 const KEYFRAME_BABY_THROWN: f32 = 14.5;
 
 // baby hits ground, thump
 const KEYFRAME_BABY_GROUND: f32 = 15.5;
+
+// car window roll up
 
 // car turns around
 // car burnout

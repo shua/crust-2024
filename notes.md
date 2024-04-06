@@ -15,3 +15,5 @@ occasional battles with rats? maybe rats will peek and try to push you
 aabb collision should be enough?
 baby movement hopping?
 
+game starts off at night but ends at dawn/morning
+
