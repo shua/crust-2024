@@ -13,7 +13,7 @@ struct Control;
 #[derive(Component)]
 struct Collide;
 #[derive(Resource)]
-struct UpdateRemainder(f32, bool);
+struct PhysicsTick(f32);
 #[derive(Component, Default)]
 struct Movement {
     ctl: Vec2,
@@ -26,7 +26,7 @@ struct Tile(u8);
 #[derive(Event)]
 struct Quit; // custom quit event used to save map before actual AppExit
 #[derive(Resource, Default, Deref)]
-struct TileSprites(Vec<(Color, Handle<Image>, Vec2)>);
+struct TileTypes(Vec<(Color, Handle<Image>, Vec2)>);
 
 #[derive(Resource, Default)]
 struct DebugInfo {
@@ -53,19 +53,11 @@ fn main() {
         // .add_plugins(bevy_editor_pls::EditorPlugin::new())
         .insert_resource(ClearColor(Color::rgb(0.2, 0.2, 0.2)))
         .insert_resource(DebugInfo::default())
-        .insert_resource(UpdateRemainder(0., false))
-        .insert_resource(TileSprites(vec![default()]))
+        .insert_resource(PhysicsTick(0.))
+        .insert_resource(TileTypes(vec![default()]))
         .add_event::<Quit>()
         .add_systems(Startup, setup_graphics)
-        .add_systems(
-            Update,
-            (
-                check_kbd,     //
-                check_collide, //
-                update_movement,
-            )
-                .chain(),
-        )
+        .add_systems(Update, (check_kbd, check_collide, update_movement).chain())
         .add_systems(Update, (check_mouse, on_quit))
         .add_systems(PostUpdate, draw_debug)
         .run();
@@ -91,7 +83,7 @@ impl Tile {
     fn new_bundle(
         t: u8,
         pos: Vec3,
-        tile_sprites: &TileSprites,
+        tile_sprites: &TileTypes,
     ) -> (Collide, Tile, SpriteBundle, ImageScaleMode) {
         // 300*50 = 3*100*5*10 = 3*10^3*5 = 3*2^3*5^4
         // 1000 = 10^3 = 2^3*5^3
@@ -133,7 +125,7 @@ fn setup_graphics(
     mut command: Commands,
     assets: Res<AssetServer>,
     mut win: Query<&mut Window, With<PrimaryWindow>>,
-    mut tile_sprites: ResMut<TileSprites>,
+    mut tile_types: ResMut<TileTypes>,
 ) {
     command.spawn((
         MainCamera,
@@ -179,7 +171,7 @@ fn setup_graphics(
         },
     ));
 
-    tile_sprites.0.extend([
+    tile_types.0.extend([
         (
             Color::default(),
             assets.load("tiled_garbage.png"),
@@ -197,7 +189,7 @@ fn setup_graphics(
         command.spawn(Tile::new_bundle(
             t,
             map_origin + Vec3::new(x, y, 0.),
-            &tile_sprites,
+            &tile_types,
         ));
     }
 
@@ -248,7 +240,7 @@ fn check_mouse(
         &mut Handle<Image>,
         &mut Tile,
     )>,
-    tile_sprites: Res<TileSprites>,
+    tile_types: Res<TileTypes>,
     mut commands: Commands,
     mut dbg: ResMut<DebugInfo>,
 ) {
@@ -270,19 +262,19 @@ fn check_mouse(
                 continue;
             }
 
-            tile.0 = (tile.0 + 1) % (tile_sprites.len() as u8);
+            tile.0 = (tile.0 + 1) % (tile_types.len() as u8);
             if tile.0 == 0 {
                 commands.get_entity(e).unwrap().despawn();
             } else {
-                s.color = tile_sprites.0[tile.0 as usize].0;
-                *img = tile_sprites.0[tile.0 as usize].1.clone();
+                s.color = tile_types.0[tile.0 as usize].0;
+                *img = tile_types.0[tile.0 as usize].1.clone();
             }
             return;
         }
 
         // no tile, need to insert
         let tile_pos = (cursor / TILE_SZ).round() * TILE_SZ;
-        commands.spawn(Tile::new_bundle(1, tile_pos.extend(0.), &tile_sprites));
+        commands.spawn(Tile::new_bundle(1, tile_pos.extend(0.), &tile_types));
     }
 }
 
@@ -292,7 +284,7 @@ fn check_mouse(
 // this is not working correctly as it sees collisions where it shouldn't
 fn check_collide(
     time: Res<Time>,
-    mut update_rem: ResMut<UpdateRemainder>,
+    mut update_rem: ResMut<PhysicsTick>,
     mut ctl: Query<(Entity, &Transform, &mut Movement, &mut Sprite), With<Control>>,
     col: Query<(Entity, &Transform), With<Collide>>,
     mut dbg: ResMut<DebugInfo>,
@@ -303,12 +295,14 @@ fn check_collide(
             continue;
         }
 
-        let (mut dt, push_vert) = (update_rem.0, update_rem.1);
+        let mut dt = update_rem.0;
+        // 60 physics ticks a second
         dt += time.delta_seconds() * 60.;
         let mut aabb = Aabb2d::new(t.translation.xy(), t.scale.xy() / 2.);
         v.climb = false;
+        let mut collisions = vec![];
         while dt > 1. {
-            let mut collisions = vec![];
+            collisions = vec![];
             v.force += Vec2::new(0., -9.8 / 60.);
             aabb = Aabb2d::new(aabb.center() + v.ctl.xy() + v.force.xy(), aabb.half_size());
             for (ec, col) in &col {
@@ -355,6 +349,8 @@ fn check_collide(
                     aabb.min.y += vert;
                     aabb.max.y += vert;
                 } else {
+                    // if push is opposite to the forces applied
+                    // then we've hit a wall, and we cancel the force
                     if horz.signum() != v.force.x.signum() {
                         v.force.x = 0.;
                     }
@@ -362,18 +358,29 @@ fn check_collide(
                     aabb.max.x += horz;
                 }
             }
-            if !collisions.is_empty() {
-                dbg.collisions = collisions;
-                dbg.ctl_aabb = Some(Aabb2d::new(t.translation.xy() + v.ctl, t.scale.xy() / 2.));
-            }
-
             dt -= 1.;
         }
+        if !collisions.is_empty() {
+            dbg.text.clear();
+            dbg.text.push(TextSection::new(
+                format!(
+                    "vctl: {:?}, vforce: {:?}\npos: {:?}\nrot: {:?}, climb: {}",
+                    v.ctl,
+                    v.force,
+                    t.translation,
+                    t.rotation.to_axis_angle(),
+                    v.climb,
+                ),
+                default(),
+            ));
+            dbg.collisions = collisions;
+            dbg.ctl_aabb = Some(aabb);
+        }
+
         let tnew = aabb.center();
         v.out = tnew - t.translation.xy();
-        if (dt, push_vert) != (update_rem.0, update_rem.1) {
+        if dt != update_rem.0 {
             update_rem.0 = dt;
-            update_rem.1 = push_vert;
         }
     }
 }
@@ -399,18 +406,6 @@ fn update_movement(mut movers: Query<(&mut Transform, &Movement, &mut Sprite)>) 
         if t.translation.y < -1000. {
             t.translation = Vec3::ZERO;
         }
-        dbg.text.clear();
-        dbg.text.push(TextSection::new(
-            format!(
-                "vctl: {:?}, vforce: {:?}\npos: {:?}\nrot: {:?}, climb: {}",
-                v.ctl,
-                v.force,
-                t.translation,
-                t.rotation.to_axis_angle(),
-                v.climb,
-            ),
-            default(),
-        ));
     }
 }
 
