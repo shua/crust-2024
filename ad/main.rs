@@ -109,20 +109,20 @@ fn sprite_animation(
 
 // ------------------------------- Sound -------------------------------
 #[derive(Component)]
-enum Sound {
+enum SoundVolume {
     Background,
-    CarIdle,
+    CarIdle(f32),
 }
 
 #[derive(Component)]
 struct SoundPlayTimer(Timer);
 
-fn volume(query: Query<(&AudioSink, &Sound)>, time: Res<Time>) {
+fn volume(query: Query<(&AudioSink, &SoundVolume)>, time: Res<Time>) {
     for (sink, sound) in &query {
         match sound {
-            Sound::Background => sink.set_volume((time.elapsed_seconds() / KEYFRAME_BG_MUSIC_VOL_MAX).min(1.0)),
-            Sound::CarIdle => sink.set_volume(
-                inv_lerp(
+            SoundVolume::Background => sink.set_volume((time.elapsed_seconds() / KEYFRAME_BG_MUSIC_VOL_MAX).min(1.0)),
+            SoundVolume::CarIdle(base_volume) => sink.set_volume(
+                base_volume * inv_lerp(
                     KEYFRAME_CAR_SND_IDLE_START, 
                     KEYFRAME_CAR_SND_IDLE_VOL_MAX, 
                     time.elapsed_seconds()
@@ -153,11 +153,17 @@ const KEYFRAME_CAR_SND_IDLE_START: f32 = 5.0;
 const KEYFRAME_CAR_MOVE_STOP: f32 = 10.0;
 const KEYFRAME_CAR_SND_IDLE_VOL_MAX: f32 = 8.0;
 
+// brake squeak
+const KEYFRAME_CAR_SND_BRAKE: f32 = 9.75;
 // window roll 
+const KEYFRAME_CAR_SND_WINDOW: f32 = 11.0;
+
 // baby thrown
+const KEYFRAME_BABY_THROWN: f32 = 15.0;
+
 // thump
 // car turns around
-// car schreech
+// car burnout
 // car sound fades
 
 fn setup(
@@ -222,7 +228,7 @@ fn setup(
                 ..default()
             }
         },
-        Sound::Background,
+        SoundVolume::Background,
     ));
 
     commands.spawn((
@@ -234,8 +240,44 @@ fn setup(
                 ..default()
             }
         },
-        Sound::CarIdle,
+        SoundVolume::CarIdle(0.2), // control base volume
         SoundPlayTimer(Timer::from_seconds(KEYFRAME_CAR_SND_IDLE_START, TimerMode::Once)),
+    ));
+
+    commands.spawn((
+        AudioBundle {
+            source: asset_server.load("sounds/car-brake-squeak.wav"),
+            settings: PlaybackSettings {
+                paused: true,
+                mode: bevy::audio::PlaybackMode::Once,
+                ..default()
+            }
+        },
+        SoundPlayTimer(Timer::from_seconds(KEYFRAME_CAR_SND_BRAKE, TimerMode::Once)),
+    ));
+
+    commands.spawn((
+        AudioBundle {
+            source: asset_server.load("sounds/car-window-open.wav"),
+            settings: PlaybackSettings {
+                paused: true,
+                mode: bevy::audio::PlaybackMode::Once,
+                ..default()
+            }
+        },
+        SoundPlayTimer(Timer::from_seconds(KEYFRAME_CAR_SND_WINDOW, TimerMode::Once)),
+    ));
+
+    commands.spawn((
+        AudioBundle {
+            source: asset_server.load("sounds/baby-throw-woosh.wav"),
+            settings: PlaybackSettings {
+                paused: true,
+                mode: bevy::audio::PlaybackMode::Once,
+                ..default()
+            }
+        },
+        SoundPlayTimer(Timer::from_seconds(KEYFRAME_BABY_THROWN, TimerMode::Once)),
     ));
 }
 
@@ -321,8 +363,6 @@ fn spawn_baby(
         SpriteAnimationTimer(Timer::from_seconds(0.11, TimerMode::Repeating)),
     ));
 }
-
-
 
 fn draw_debug(mut text: Query<&mut Text, With<DebugText>>, time: Res<Time>) {
     for mut t in &mut text {
