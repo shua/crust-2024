@@ -63,6 +63,50 @@ impl PingPongState {
 #[derive(Component, Deref, DerefMut)]
 struct SpriteAnimationTimer(Timer);
 
+fn sprite_animation(
+    time: Res<Time>,
+    mut query: Query<(
+        &AnimationIndices, 
+        &mut SpriteAnimationType, 
+        &mut SpriteAnimationTimer, 
+        &mut TextureAtlas)>,
+) {
+    for (indices, mut anim_type, mut timer, mut atlas) in &mut query {
+        timer.tick(time.delta());
+        if timer.just_finished() {
+            match *anim_type {
+                SpriteAnimationType::Linear => {
+                    atlas.index = if atlas.index == indices.last {
+                        indices.first
+                    } else {
+                        atlas.index + 1
+                    }
+                },
+                SpriteAnimationType::PingPong(ref mut ppstate) => {
+                    match ppstate {
+                        PingPongState::Forward => {
+                            atlas.index = if atlas.index == indices.last {
+                                *ppstate = PingPongState::Backward;
+                                atlas.index - 1
+                            } else {
+                                atlas.index + 1
+                            }
+                        },
+                        PingPongState::Backward => {
+                            atlas.index = if atlas.index == indices.first {
+                                *ppstate = PingPongState::Forward;
+                                atlas.index + 1
+                            } else {
+                                atlas.index - 1
+                            }
+                        },
+                    }
+                },
+            }
+        }
+    }
+}
+
 // ------------------------------- Sound -------------------------------
 #[derive(Component)]
 enum Sound {
@@ -72,6 +116,30 @@ enum Sound {
 
 #[derive(Component)]
 struct SoundPlayTimer(Timer);
+
+fn volume(query: Query<(&AudioSink, &Sound)>, time: Res<Time>) {
+    for (sink, sound) in &query {
+        match sound {
+            Sound::Background => sink.set_volume((time.elapsed_seconds() / KEYFRAME_BG_MUSIC_VOL_MAX).min(1.0)),
+            Sound::CarIdle => sink.set_volume(
+                inv_lerp(
+                    KEYFRAME_CAR_SND_IDLE_START, 
+                    KEYFRAME_CAR_SND_IDLE_VOL_MAX, 
+                    time.elapsed_seconds()
+                )
+            ),
+        }
+    }
+}
+
+fn sound_player(mut query: Query<(&AudioSink, &mut SoundPlayTimer)>, time: Res<Time>) {
+    for (sink, mut sound_play_timer) in &mut query {
+        sound_play_timer.0.tick(time.delta());
+        if sound_play_timer.0.just_finished() {
+            sink.play();
+        }
+    }
+}
 
 // ------------------------------- Intro Cutscene -------------------------------
 // background soundscape starts playing but fades in quickly
@@ -85,7 +153,6 @@ const KEYFRAME_CAR_SND_IDLE_START: f32 = 5.0;
 const KEYFRAME_CAR_MOVE_STOP: f32 = 10.0;
 const KEYFRAME_CAR_SND_IDLE_VOL_MAX: f32 = 8.0;
 
-// brake sound
 // window roll 
 // baby thrown
 // thump
@@ -255,68 +322,11 @@ fn spawn_baby(
     ));
 }
 
-fn sprite_animation(
-    time: Res<Time>,
-    mut query: Query<(
-        &AnimationIndices, 
-        &mut SpriteAnimationType, 
-        &mut SpriteAnimationTimer, 
-        &mut TextureAtlas)>,
-) {
-    for (indices, mut anim_type, mut timer, mut atlas) in &mut query {
-        timer.tick(time.delta());
-        if timer.just_finished() {
-            match *anim_type {
-                SpriteAnimationType::Linear => {
-                    atlas.index = if atlas.index == indices.last {
-                        indices.first
-                    } else {
-                        atlas.index + 1
-                    }
-                },
-                SpriteAnimationType::PingPong(ref mut ppstate) => {
-                    match ppstate {
-                        PingPongState::Forward => {
-                            atlas.index = if atlas.index == indices.last {
-                                *ppstate = PingPongState::Backward;
-                                atlas.index - 1
-                            } else {
-                                atlas.index + 1
-                            }
-                        },
-                        PingPongState::Backward => {
-                            atlas.index = if atlas.index == indices.first {
-                                *ppstate = PingPongState::Forward;
-                                atlas.index + 1
-                            } else {
-                                atlas.index - 1
-                            }
-                        },
-                    }
-                },
-            }
-        }
-    }
-}
+
 
 fn draw_debug(mut text: Query<&mut Text, With<DebugText>>, time: Res<Time>) {
     for mut t in &mut text {
         *t = Text::from_section(format!("time: {:.3}", time.elapsed_seconds()), TextStyle::default());
-    }
-}
-
-fn volume(query: Query<(&AudioSink, &Sound)>, time: Res<Time>) {
-    for (sink, sound) in &query {
-        match sound {
-            Sound::Background => sink.set_volume((time.elapsed_seconds() / KEYFRAME_BG_MUSIC_VOL_MAX).min(1.0)),
-            Sound::CarIdle => sink.set_volume(
-                inv_lerp(
-                    KEYFRAME_CAR_SND_IDLE_START, 
-                    KEYFRAME_CAR_SND_IDLE_VOL_MAX, 
-                    time.elapsed_seconds()
-                )
-            ),
-        }
     }
 }
 
@@ -332,11 +342,3 @@ fn inv_lerp(a: f32, b: f32, x: f32) -> f32 {
     }
 }
 
-fn sound_player(mut query: Query<(&AudioSink, &mut SoundPlayTimer)>, time: Res<Time>) {
-    for (sink, mut sound_play_timer) in &mut query {
-        sound_play_timer.0.tick(time.delta());
-        if sound_play_timer.0.just_finished() {
-            sink.play();
-        }
-    }
-}
