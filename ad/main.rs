@@ -1,6 +1,6 @@
 use bevy::{
-    prelude::*, 
     audio::Volume,
+    prelude::*,
     render::camera::ScalingMode,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
 };
@@ -15,16 +15,14 @@ const LETTERBOX_WIDTH: f32 = 2000.;
 
 fn main() {
     App::new()
-        .add_plugins(
-            DefaultPlugins.set(WindowPlugin {
-                primary_window: Some(Window {
-                    title: "Baby".into(),
-                    resolution: (WINDOW_WIDTH, WINDOW_HEIGHT).into(),
-                    ..default()
-                }),
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "Baby".into(),
+                resolution: (WINDOW_WIDTH, WINDOW_HEIGHT).into(),
+                ..default()
+            }),
             ..default()
-            },
-        ))
+        }))
         .add_systems(Startup, setup)
         .add_systems(Update, (sprite_animation, sound_player, volume, draw_debug))
         .run();
@@ -42,11 +40,11 @@ struct AnimationIndices {
 enum SpriteAnimationType {
     // play to end, repeat
     // 123123123
-    Linear,   
+    Linear,
 
     // play to end, go backwards, repeat
     // 123212321
-    PingPong(PingPongState), 
+    PingPong(PingPongState),
 }
 
 impl SpriteAnimationType {
@@ -72,10 +70,11 @@ struct SpriteAnimationTimer(Timer);
 fn sprite_animation(
     time: Res<Time>,
     mut query: Query<(
-        &AnimationIndices, 
-        &mut SpriteAnimationType, 
-        &mut SpriteAnimationTimer, 
-        &mut TextureAtlas)>,
+        &AnimationIndices,
+        &mut SpriteAnimationType,
+        &mut SpriteAnimationTimer,
+        &mut TextureAtlas,
+    )>,
 ) {
     for (indices, mut anim_type, mut timer, mut atlas) in &mut query {
         timer.tick(time.delta());
@@ -87,25 +86,23 @@ fn sprite_animation(
                     } else {
                         atlas.index + 1
                     }
-                },
-                SpriteAnimationType::PingPong(ref mut ppstate) => {
-                    match ppstate {
-                        PingPongState::Forward => {
-                            atlas.index = if atlas.index == indices.last {
-                                *ppstate = PingPongState::Backward;
-                                atlas.index - 1
-                            } else {
-                                atlas.index + 1
-                            }
-                        },
-                        PingPongState::Backward => {
-                            atlas.index = if atlas.index == indices.first {
-                                *ppstate = PingPongState::Forward;
-                                atlas.index + 1
-                            } else {
-                                atlas.index - 1
-                            }
-                        },
+                }
+                SpriteAnimationType::PingPong(ref mut ppstate) => match ppstate {
+                    PingPongState::Forward => {
+                        atlas.index = if atlas.index == indices.last {
+                            *ppstate = PingPongState::Backward;
+                            atlas.index - 1
+                        } else {
+                            atlas.index + 1
+                        }
+                    }
+                    PingPongState::Backward => {
+                        atlas.index = if atlas.index == indices.first {
+                            *ppstate = PingPongState::Forward;
+                            atlas.index + 1
+                        } else {
+                            atlas.index - 1
+                        }
                     }
                 },
             }
@@ -126,14 +123,16 @@ struct SoundPlayTimer(Timer);
 fn volume(query: Query<(&AudioSink, &SoundVolume)>, time: Res<Time>) {
     for (sink, sound) in &query {
         match sound {
-            SoundVolume::Background => sink.set_volume(
-                (time.elapsed_seconds() / KEYFRAME_BG_MUSIC_VOL_MAX).min(1.0)),
+            SoundVolume::Background => {
+                sink.set_volume((time.elapsed_seconds() / KEYFRAME_BG_MUSIC_VOL_MAX).min(1.0))
+            }
             SoundVolume::CarIdle(base_volume) => sink.set_volume(
-                base_volume * inv_lerp(
-                    KEYFRAME_CAR_SND_IDLE_START, 
-                    KEYFRAME_CAR_SND_IDLE_VOL_MAX, 
-                    time.elapsed_seconds()
-                )
+                base_volume
+                    * inv_lerp(
+                        KEYFRAME_CAR_SND_IDLE_START,
+                        KEYFRAME_CAR_SND_IDLE_VOL_MAX,
+                        time.elapsed_seconds(),
+                    ),
             ),
         }
     }
@@ -163,7 +162,7 @@ const KEYFRAME_CAR_SND_IDLE_VOL_MAX: f32 = 8.0;
 // brake squeak
 const KEYFRAME_CAR_SND_BRAKE: f32 = 9.75;
 
-// window roll 
+// window roll
 const KEYFRAME_CAR_SND_WINDOW: f32 = 11.0;
 
 // baby thrown
@@ -177,25 +176,25 @@ const KEYFRAME_BABY_GROUND: f32 = 15.5;
 // car sound fades
 
 fn setup(
-    mut commands: Commands, 
+    mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     mut animations: ResMut<Assets<AnimationClip>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-
     commands.spawn(Camera2dBundle {
-       projection: OrthographicProjection {
-        // When creating our own OrthographicProjection we need to set the far and near
-        // values ourselves. 
-        // See: https://bevy-cheatbook.github.io/2d/camera.html#caveat-nearfar-values
-        far: 1000.,
-        near: -1000.,
-        scaling_mode: ScalingMode::FixedVertical(600.),
+        projection: OrthographicProjection {
+            // When creating our own OrthographicProjection we need to set the far and near
+            // values ourselves.
+            // See: https://bevy-cheatbook.github.io/2d/camera.html#caveat-nearfar-values
+            far: 1000.,
+            near: -1000.,
+            scaling_mode: ScalingMode::FixedVertical(600.),
+            ..default()
+        },
         ..default()
-       }, 
-        ..default()});
+    });
 
     commands.spawn((
         DebugText,
@@ -214,37 +213,42 @@ fn setup(
     // Scene
     commands.spawn(SpriteBundle {
         texture: asset_server.load("scenes/intro/bg.png"),
-        transform: Transform::from_xyz(0., 0., 0.,),
+        transform: Transform::from_xyz(0., 0., 0.),
         ..default()
     });
     commands.spawn(SpriteBundle {
         texture: asset_server.load("scenes/intro/pile_1.png"),
-        transform: Transform::from_xyz(0., 0., 10.,),
+        transform: Transform::from_xyz(0., 0., 10.),
         ..default()
     });
     commands.spawn(SpriteBundle {
         texture: asset_server.load("scenes/intro/pile_2.png"),
-        transform: Transform::from_xyz(0., 0., 10.,),
+        transform: Transform::from_xyz(0., 0., 10.),
         ..default()
     });
 
     // Vertical Letterboxes
     let letterbox_h_offset = (WINDOW_WIDTH + LETTERBOX_WIDTH) / 2.;
-    commands.spawn(MaterialMesh2dBundle{
+    commands.spawn(MaterialMesh2dBundle {
         mesh: Mesh2dHandle(meshes.add(Rectangle::new(LETTERBOX_WIDTH, WINDOW_WIDTH))),
         material: materials.add(Color::BLACK),
         transform: Transform::from_xyz(letterbox_h_offset, 0., 100.),
         ..default()
     });
 
-    commands.spawn(MaterialMesh2dBundle{
+    commands.spawn(MaterialMesh2dBundle {
         mesh: Mesh2dHandle(meshes.add(Rectangle::new(LETTERBOX_WIDTH, WINDOW_WIDTH))),
         material: materials.add(Color::BLACK),
         transform: Transform::from_xyz(-letterbox_h_offset, 0., 100.),
         ..default()
     });
 
-    spawn_car(&mut commands, &asset_server, &mut texture_atlas_layouts, &mut animations);
+    spawn_car(
+        &mut commands,
+        &asset_server,
+        &mut texture_atlas_layouts,
+        &mut animations,
+    );
     spawn_baby(&mut commands, &asset_server, &mut texture_atlas_layouts);
 
     commands.spawn((
@@ -254,7 +258,7 @@ fn setup(
                 paused: false,
                 volume: Volume::ZERO,
                 ..default()
-            }
+            },
         },
         SoundVolume::Background,
     ));
@@ -266,10 +270,13 @@ fn setup(
                 paused: true,
                 mode: bevy::audio::PlaybackMode::Loop,
                 ..default()
-            }
+            },
         },
         SoundVolume::CarIdle(0.2), // control base volume
-        SoundPlayTimer(Timer::from_seconds(KEYFRAME_CAR_SND_IDLE_START, TimerMode::Once)),
+        SoundPlayTimer(Timer::from_seconds(
+            KEYFRAME_CAR_SND_IDLE_START,
+            TimerMode::Once,
+        )),
     ));
 
     commands.spawn((
@@ -279,7 +286,7 @@ fn setup(
                 paused: true,
                 mode: bevy::audio::PlaybackMode::Once,
                 ..default()
-            }
+            },
         },
         SoundPlayTimer(Timer::from_seconds(KEYFRAME_CAR_SND_BRAKE, TimerMode::Once)),
     ));
@@ -291,9 +298,12 @@ fn setup(
                 paused: true,
                 mode: bevy::audio::PlaybackMode::Once,
                 ..default()
-            }
+            },
         },
-        SoundPlayTimer(Timer::from_seconds(KEYFRAME_CAR_SND_WINDOW, TimerMode::Once)),
+        SoundPlayTimer(Timer::from_seconds(
+            KEYFRAME_CAR_SND_WINDOW,
+            TimerMode::Once,
+        )),
     ));
 
     commands.spawn((
@@ -303,7 +313,7 @@ fn setup(
                 paused: true,
                 mode: bevy::audio::PlaybackMode::Once,
                 ..default()
-            }
+            },
         },
         SoundPlayTimer(Timer::from_seconds(KEYFRAME_BABY_THROWN, TimerMode::Once)),
     ));
@@ -315,21 +325,21 @@ fn setup(
                 paused: true,
                 mode: bevy::audio::PlaybackMode::Once,
                 ..default()
-            }
+            },
         },
         SoundPlayTimer(Timer::from_seconds(KEYFRAME_BABY_GROUND, TimerMode::Once)),
     ));
 }
 
 fn spawn_car(
-    commands: &mut Commands, 
+    commands: &mut Commands,
     asset_server: &Res<AssetServer>,
     texture_atlas_layouts: &mut ResMut<Assets<TextureAtlasLayout>>,
     animations: &mut ResMut<Assets<AnimationClip>>,
 ) {
-    let layout = TextureAtlasLayout::from_grid(Vec2::new(170.,100.), 3, 4, None, None);
+    let layout = TextureAtlasLayout::from_grid(Vec2::new(170., 100.), 3, 4, None, None);
     let texture_atlas_layout = texture_atlas_layouts.add(layout);
-    let sprite_animation_indices = AnimationIndices{ first: 1, last: 6 };
+    let sprite_animation_indices = AnimationIndices { first: 1, last: 6 };
 
     let car_name = Name::new("car");
     let mut car_animation = AnimationClip::default();
@@ -338,9 +348,7 @@ fn spawn_car(
             parts: vec![car_name.clone()],
         },
         VariableCurve {
-            keyframe_timestamps: vec![
-                KEYFRAME_CAR_MOVE_START, 
-                KEYFRAME_CAR_MOVE_STOP],
+            keyframe_timestamps: vec![KEYFRAME_CAR_MOVE_START, KEYFRAME_CAR_MOVE_STOP],
             keyframes: Keyframes::Translation(vec![
                 Vec3::new(700., -50., 1.),
                 Vec3::new(-50., -150., 1.),
@@ -350,13 +358,12 @@ fn spawn_car(
     );
     let mut player = AnimationPlayer::default();
     player.play(animations.add(car_animation));
-    
+
     commands.spawn((
         car_name,
         SpriteBundle {
             texture: asset_server.load("car-sheet.png"),
-            transform: Transform::from_xyz(700., -50., 1.)
-                .with_scale(Vec3::ONE * 1.5),
+            transform: Transform::from_xyz(700., -50., 1.).with_scale(Vec3::ONE * 1.5),
             sprite: Sprite {
                 flip_x: true,
                 ..default()
@@ -374,20 +381,19 @@ fn spawn_car(
     ));
 }
 
-fn spawn_baby(    
-    commands: &mut Commands, 
+fn spawn_baby(
+    commands: &mut Commands,
     asset_server: &Res<AssetServer>,
     texture_atlas_layouts: &mut ResMut<Assets<TextureAtlasLayout>>,
 ) {
-    let layout = TextureAtlasLayout::from_grid(Vec2::new(251.,377.), 3, 2, None, None);
+    let layout = TextureAtlasLayout::from_grid(Vec2::new(251., 377.), 3, 2, None, None);
     let texture_atlas_layout = texture_atlas_layouts.add(layout);
-    let sprite_animation_indices = AnimationIndices{ first: 0, last: 4 };
+    let sprite_animation_indices = AnimationIndices { first: 0, last: 4 };
 
     commands.spawn((
         SpriteBundle {
             texture: asset_server.load("baby-idle-sheet.png"),
-            transform: Transform::from_xyz(-0., -200., 2.)
-                .with_scale(Vec3::ONE * 0.5),
+            transform: Transform::from_xyz(-0., -200., 2.).with_scale(Vec3::ONE * 0.5),
             sprite: Sprite {
                 flip_x: false,
                 ..default()
@@ -406,11 +412,14 @@ fn spawn_baby(
 
 fn draw_debug(mut text: Query<&mut Text, With<DebugText>>, time: Res<Time>) {
     for mut t in &mut text {
-        *t = Text::from_section(format!("time: {:.3}", time.elapsed_seconds()), TextStyle::default());
+        *t = Text::from_section(
+            format!("time: {:.3}", time.elapsed_seconds()),
+            TextStyle::default(),
+        );
     }
 }
 
-// Clamped inverse LERP 
+// Clamped inverse LERP
 // https://www.gamedev.net/articles/programming/general-and-gameplay-programming/inverse-lerp-a-super-useful-yet-often-overlooked-function-r5230/
 fn inv_lerp(a: f32, b: f32, x: f32) -> f32 {
     if x < a {
@@ -421,4 +430,3 @@ fn inv_lerp(a: f32, b: f32, x: f32) -> f32 {
         (x - a) / (b - a)
     }
 }
-
