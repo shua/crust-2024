@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use bevy::{
     app::AppExit,
     math::bounding::{Aabb2d, BoundingVolume, IntersectsVolume},
@@ -17,6 +19,7 @@ struct Movement {
     ctl: Vec2,
     force: Vec2,
     out: Vec2,
+    climb: bool,
 }
 #[derive(Component, Deref, DerefMut, Clone, Copy, Debug)]
 struct Tile(u8);
@@ -47,7 +50,7 @@ fn main() {
             }),
             ..default()
         }))
-        .add_plugins(bevy_editor_pls::EditorPlugin::new())
+        // .add_plugins(bevy_editor_pls::EditorPlugin::new())
         .insert_resource(ClearColor(Color::rgb(0.2, 0.2, 0.2)))
         .insert_resource(DebugInfo::default())
         .insert_resource(UpdateRemainder(0., false))
@@ -90,6 +93,10 @@ impl Tile {
         pos: Vec3,
         tile_sprites: &TileSprites,
     ) -> (Collide, Tile, SpriteBundle, ImageScaleMode) {
+        // 300*50 = 3*100*5*10 = 3*10^3*5 = 3*2^3*5^4
+        // 1000 = 10^3 = 2^3*5^3
+        // so should be some denominator of 2^3 * 5^3
+        let image_tile_sz = 200.;
         (
             Collide,
             Tile(t),
@@ -98,10 +105,10 @@ impl Tile {
                     color: tile_sprites[t as usize].0,
                     custom_size: Some(Vec2::ONE),
                     rect: Some(Rect::new(
-                        (pos.x * 100. / TILE_SZ).rem_euclid(1500.),
-                        ((-pos.y) * 100. / TILE_SZ).rem_euclid(1000.),
-                        (pos.x * 100. / TILE_SZ).rem_euclid(1500.) + 100.,
-                        ((-pos.y) * 100. / TILE_SZ).rem_euclid(1000.) + 100.,
+                        (pos.x * image_tile_sz / TILE_SZ).rem_euclid(1500.),
+                        ((-pos.y) * image_tile_sz / TILE_SZ).rem_euclid(1000.),
+                        (pos.x * image_tile_sz / TILE_SZ).rem_euclid(1500.) + image_tile_sz,
+                        ((-pos.y) * image_tile_sz / TILE_SZ).rem_euclid(1000.) + image_tile_sz,
                     )),
                     ..default()
                 },
@@ -142,12 +149,11 @@ fn setup_graphics(
     ));
     command.spawn((
         DebugUi,
-        Text2dBundle {
-            text: Text::default(),
-            text_anchor: bevy::sprite::Anchor::TopLeft,
-            transform: Transform {
-                translation: Vec3::new(-100., 100., 0.),
-                scale: Vec3::ONE,
+        TextBundle {
+            style: Style {
+                position_type: PositionType::Absolute,
+                top: Val::Px(10.),
+                left: Val::Px(10.),
                 ..default()
             },
             ..default()
@@ -300,6 +306,7 @@ fn check_collide(
         let (mut dt, push_vert) = (update_rem.0, update_rem.1);
         dt += time.delta_seconds() * 60.;
         let mut aabb = Aabb2d::new(t.translation.xy(), t.scale.xy() / 2.);
+        v.climb = false;
         while dt > 1. {
             let mut collisions = vec![];
             v.force += Vec2::new(0., -9.8 / 60.);
@@ -315,14 +322,18 @@ fn check_collide(
                 }
             }
 
+            // sort bottom-to-top, left-to-right
             // collisions.sort_by(|c1, c2| {
             //     (c2.min.y.total_cmp(&c1.min.y)).then(c1.min.x.total_cmp(&c2.min.x))
             // });
+
+            // sort by distance to aabb
             collisions.sort_by(|c1, c2| {
                 (c1.center() - aabb.center())
                     .length_squared()
                     .total_cmp(&(c2.center() - aabb.center()).length_squared())
             });
+
             for col_aabb in &collisions {
                 if !aabb.intersects(col_aabb) {
                     continue;
@@ -333,28 +344,25 @@ fn check_collide(
                 let dn = col_aabb.min.y - aabb.max.y;
                 let horz = if lt.abs() < rt.abs() { lt } else { rt };
                 let vert = if dn.abs() < up.abs() { dn } else { up };
-                let push = if horz.abs() > vert.abs() {
+                if horz.abs() > vert.abs() {
+                    // uncomment these, and he can no longer walk on ceilings
                     // if vert.signum() != v.force.y.signum() {
                     v.force.y = 0.;
                     // }
-                    Vec2::new(0., vert)
+                    if vert < 0. {
+                        v.climb = true;
+                    }
+                    aabb.min.y += vert;
+                    aabb.max.y += vert;
                 } else {
                     if horz.signum() != v.force.x.signum() {
                         v.force.x = 0.;
                     }
-                    Vec2::new(horz, 0.)
-                };
-                aabb = Aabb2d::new(aabb.center() + push, aabb.half_size());
+                    aabb.min.x += horz;
+                    aabb.max.x += horz;
+                }
             }
             if !collisions.is_empty() {
-                dbg.text.clear();
-                dbg.text.push(TextSection::new(
-                    format!(
-                        "vctl: {:?}, vforce: {:?}\npos: {:?}",
-                        v.ctl, v.force, t.translation
-                    ),
-                    default(),
-                ));
                 dbg.collisions = collisions;
                 dbg.ctl_aabb = Some(Aabb2d::new(t.translation.xy() + v.ctl, t.scale.xy() / 2.));
             }
@@ -370,15 +378,39 @@ fn check_collide(
     }
 }
 
-fn update_movement(mut movers: Query<(&mut Transform, &Movement)>) {
-    for (mut t, v) in &mut movers {
+fn update_movement(mut movers: Query<(&mut Transform, &Movement, &mut Sprite)>) {
+    for (mut t, v, mut s) in &mut movers {
         t.translation.x += v.out.x;
         t.translation.y += v.out.y;
+
+        if !v.climb {
+            t.rotation = Quat::IDENTITY;
+            if v.ctl.x < 0. {
+                s.flip_x = true;
+            } else if v.ctl.x > 0. {
+                s.flip_x = false;
+            }
+        } else {
+            s.flip_x = true;
+            t.rotation = Quat::from_rotation_z(-PI / 2.);
+        }
 
         // kill box
         if t.translation.y < -1000. {
             t.translation = Vec3::ZERO;
         }
+        dbg.text.clear();
+        dbg.text.push(TextSection::new(
+            format!(
+                "vctl: {:?}, vforce: {:?}\npos: {:?}\nrot: {:?}, climb: {}",
+                v.ctl,
+                v.force,
+                t.translation,
+                t.rotation.to_axis_angle(),
+                v.climb,
+            ),
+            default(),
+        ));
     }
 }
 
