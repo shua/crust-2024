@@ -126,7 +126,8 @@ struct SoundPlayTimer(Timer);
 fn volume(query: Query<(&AudioSink, &SoundVolume)>, time: Res<Time>) {
     for (sink, sound) in &query {
         match sound {
-            SoundVolume::Background => sink.set_volume((time.elapsed_seconds() / KEYFRAME_BG_MUSIC_VOL_MAX).min(1.0)),
+            SoundVolume::Background => sink.set_volume(
+                (time.elapsed_seconds() / KEYFRAME_BG_MUSIC_VOL_MAX).min(1.0)),
             SoundVolume::CarIdle(base_volume) => sink.set_volume(
                 base_volume * inv_lerp(
                     KEYFRAME_CAR_SND_IDLE_START, 
@@ -166,9 +167,11 @@ const KEYFRAME_CAR_SND_BRAKE: f32 = 9.75;
 const KEYFRAME_CAR_SND_WINDOW: f32 = 11.0;
 
 // baby thrown
-const KEYFRAME_BABY_THROWN: f32 = 15.0;
+const KEYFRAME_BABY_THROWN: f32 = 14.5;
 
-// thump
+// baby hits ground, thump
+const KEYFRAME_BABY_GROUND: f32 = 15.5;
+
 // car turns around
 // car burnout
 // car sound fades
@@ -225,7 +228,7 @@ fn setup(
         ..default()
     });
 
-    // Verical Letterboxes
+    // Vertical Letterboxes
     let letterbox_h_offset = (WINDOW_WIDTH + LETTERBOX_WIDTH) / 2.;
     commands.spawn(MaterialMesh2dBundle{
         mesh: Mesh2dHandle(meshes.add(Rectangle::new(LETTERBOX_WIDTH, WINDOW_WIDTH))),
@@ -303,6 +306,18 @@ fn setup(
             }
         },
         SoundPlayTimer(Timer::from_seconds(KEYFRAME_BABY_THROWN, TimerMode::Once)),
+    ));
+
+    commands.spawn((
+        AudioBundle {
+            source: asset_server.load("sounds/thump.wav"),
+            settings: PlaybackSettings {
+                paused: true,
+                mode: bevy::audio::PlaybackMode::Once,
+                ..default()
+            }
+        },
+        SoundPlayTimer(Timer::from_seconds(KEYFRAME_BABY_GROUND, TimerMode::Once)),
     ));
 }
 
