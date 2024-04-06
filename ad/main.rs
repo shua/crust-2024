@@ -5,9 +5,6 @@ use bevy::{
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
 };
 
-#[derive(Component)]
-struct DebugText;
-
 const WINDOW_WIDTH: f32 = 800.;
 const WINDOW_HEIGHT: f32 = 600.;
 // surely this should be wide enough
@@ -24,8 +21,48 @@ fn main() {
             ..default()
         }))
         .add_systems(Startup, setup)
-        .add_systems(Update, (sprite_animation, sound_player, volume, draw_debug))
+        .add_systems(
+            Update,
+            (sprite_animation, sound_player, volume, draw_debug, despawn),
+        )
         .run();
+}
+
+// Clamped inverse LERP
+// https://www.gamedev.net/articles/programming/general-and-gameplay-programming/inverse-lerp-a-super-useful-yet-often-overlooked-function-r5230/
+fn inv_lerp(a: f32, b: f32, x: f32) -> f32 {
+    if x < a {
+        0.
+    } else if x > b {
+        1.
+    } else {
+        (x - a) / (b - a)
+    }
+}
+
+#[derive(Component)]
+struct DebugText;
+
+fn draw_debug(mut text: Query<&mut Text, With<DebugText>>, time: Res<Time>) {
+    for mut t in &mut text {
+        *t = Text::from_section(
+            format!("time: {:.3}", time.elapsed_seconds()),
+            TextStyle::default(),
+        );
+    }
+}
+
+// Schedule entity despawn
+#[derive(Component)]
+struct DespawnTimer(Timer);
+
+fn despawn(mut commands: Commands, mut query: Query<(Entity, &mut DespawnTimer)>, time: Res<Time>) {
+    for (entity, mut despawn_timer) in &mut query {
+        despawn_timer.0.tick(time.delta());
+        if despawn_timer.0.just_finished() {
+            commands.entity(entity).despawn();
+        }
+    }
 }
 
 // ------------------------------- Sprite Animation -------------------------------
@@ -113,7 +150,7 @@ fn sprite_animation(
 // ------------------------------- Sound -------------------------------
 #[derive(Component)]
 enum SoundVolume {
-    Background,
+    Background(f32),
     CarIdle(f32),
 }
 
@@ -123,9 +160,9 @@ struct SoundPlayTimer(Timer);
 fn volume(query: Query<(&AudioSink, &SoundVolume)>, time: Res<Time>) {
     for (sink, sound) in &query {
         match sound {
-            SoundVolume::Background => {
-                sink.set_volume((time.elapsed_seconds() / KEYFRAME_BG_MUSIC_VOL_MAX).min(1.0))
-            }
+            SoundVolume::Background(base_volume) => sink.set_volume(
+                base_volume * (time.elapsed_seconds() / KEYFRAME_BG_MUSIC_VOL_MAX).min(1.0),
+            ),
             SoundVolume::CarIdle(base_volume) => sink.set_volume(
                 base_volume
                     * inv_lerp(
@@ -148,8 +185,14 @@ fn sound_player(mut query: Query<(&AudioSink, &mut SoundPlayTimer)>, time: Res<T
 }
 
 // ------------------------------- Intro Cutscene -------------------------------
+const BG_MUSIC_VOL_BASE: f32 = 0.8;
+const CAR_IDLE_VOL_BASE: f32 = 0.2;
+
 // background soundscape starts playing but fades in quickly
 const KEYFRAME_BG_MUSIC_VOL_MAX: f32 = 3.0;
+
+// scene reveal
+const KEYFRAME_SCENE_REVEAL: f32 = 4.0;
 
 // car moves into frame
 const KEYFRAME_CAR_MOVE_START: f32 = 5.0;
@@ -202,7 +245,7 @@ fn setup(
             text: Text::from_section("hello, baby!", TextStyle::default()),
             text_anchor: bevy::sprite::Anchor::TopLeft,
             transform: Transform {
-                translation: Vec3::new(-380., 280., 10.),
+                translation: Vec3::new(-380., 280., 101.),
                 scale: Vec3::ONE,
                 ..default()
             },
@@ -243,6 +286,17 @@ fn setup(
         ..default()
     });
 
+    // Black Screen
+    commands.spawn((
+        MaterialMesh2dBundle {
+            mesh: Mesh2dHandle(meshes.add(Rectangle::new(WINDOW_WIDTH, WINDOW_HEIGHT))),
+            material: materials.add(Color::BLACK),
+            transform: Transform::from_xyz(0., 0., 100.),
+            ..default()
+        },
+        DespawnTimer(Timer::from_seconds(KEYFRAME_SCENE_REVEAL, TimerMode::Once)),
+    ));
+
     spawn_car(
         &mut commands,
         &asset_server,
@@ -260,7 +314,7 @@ fn setup(
                 ..default()
             },
         },
-        SoundVolume::Background,
+        SoundVolume::Background(BG_MUSIC_VOL_BASE),
     ));
 
     commands.spawn((
@@ -272,7 +326,7 @@ fn setup(
                 ..default()
             },
         },
-        SoundVolume::CarIdle(0.2), // control base volume
+        SoundVolume::CarIdle(CAR_IDLE_VOL_BASE), // control base volume
         SoundPlayTimer(Timer::from_seconds(
             KEYFRAME_CAR_SND_IDLE_START,
             TimerMode::Once,
@@ -408,25 +462,4 @@ fn spawn_baby(
         SpriteAnimationType::new_ping_pong(),
         SpriteAnimationTimer(Timer::from_seconds(0.11, TimerMode::Repeating)),
     ));
-}
-
-fn draw_debug(mut text: Query<&mut Text, With<DebugText>>, time: Res<Time>) {
-    for mut t in &mut text {
-        *t = Text::from_section(
-            format!("time: {:.3}", time.elapsed_seconds()),
-            TextStyle::default(),
-        );
-    }
-}
-
-// Clamped inverse LERP
-// https://www.gamedev.net/articles/programming/general-and-gameplay-programming/inverse-lerp-a-super-useful-yet-often-overlooked-function-r5230/
-fn inv_lerp(a: f32, b: f32, x: f32) -> f32 {
-    if x < a {
-        0.
-    } else if x > b {
-        1.
-    } else {
-        (x - a) / (b - a)
-    }
 }
