@@ -507,7 +507,12 @@ fn setup_anim(
                 _ => {}
             }
         }
-        println!("sound sequencing: {name} {:?} {:?}", curves.0, curves.1);
+        if let Some(vol) = next_vol.take() {
+            curves.0.push((t, vol));
+        }
+        if let Some(paused) = next_paused.take() {
+            curves.1.push((t, paused));
+        }
 
         if !(curves.0.is_empty() && curves.1.is_empty()) {
             sequence.seq.insert(name.clone(), curves);
