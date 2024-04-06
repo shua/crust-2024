@@ -2,10 +2,16 @@ use bevy::{
     prelude::*, 
     audio::Volume,
     render::camera::ScalingMode,
+    sprite::{MaterialMesh2dBundle, Mesh2dHandle},
 };
 
 #[derive(Component)]
 struct DebugText;
+
+const WINDOW_WIDTH: f32 = 800.;
+const WINDOW_HEIGHT: f32 = 600.;
+// surely this should be wide enough
+const LETTERBOX_WIDTH: f32 = 2000.;
 
 fn main() {
     App::new()
@@ -13,7 +19,7 @@ fn main() {
             DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
                     title: "Baby".into(),
-                    resolution: (800., 600.).into(),
+                    resolution: (WINDOW_WIDTH, WINDOW_HEIGHT).into(),
                     ..default()
                 }),
             ..default()
@@ -155,6 +161,7 @@ const KEYFRAME_CAR_SND_IDLE_VOL_MAX: f32 = 8.0;
 
 // brake squeak
 const KEYFRAME_CAR_SND_BRAKE: f32 = 9.75;
+
 // window roll 
 const KEYFRAME_CAR_SND_WINDOW: f32 = 11.0;
 
@@ -171,6 +178,8 @@ fn setup(
     asset_server: Res<AssetServer>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     mut animations: ResMut<Assets<AnimationClip>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
 
     commands.spawn(Camera2dBundle {
@@ -213,6 +222,22 @@ fn setup(
     commands.spawn(SpriteBundle {
         texture: asset_server.load("scenes/intro/pile_2.png"),
         transform: Transform::from_xyz(0., 0., 10.,),
+        ..default()
+    });
+
+    // Verical Letterboxes
+    let letterbox_h_offset = (WINDOW_WIDTH + LETTERBOX_WIDTH) / 2.;
+    commands.spawn(MaterialMesh2dBundle{
+        mesh: Mesh2dHandle(meshes.add(Rectangle::new(LETTERBOX_WIDTH, WINDOW_WIDTH))),
+        material: materials.add(Color::BLACK),
+        transform: Transform::from_xyz(letterbox_h_offset, 0., 100.),
+        ..default()
+    });
+
+    commands.spawn(MaterialMesh2dBundle{
+        mesh: Mesh2dHandle(meshes.add(Rectangle::new(LETTERBOX_WIDTH, WINDOW_WIDTH))),
+        material: materials.add(Color::BLACK),
+        transform: Transform::from_xyz(-letterbox_h_offset, 0., 100.),
         ..default()
     });
 
