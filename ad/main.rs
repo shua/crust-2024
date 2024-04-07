@@ -11,6 +11,17 @@ const WINDOW_HEIGHT: f32 = 600.;
 // surely this should be wide enough
 const LETTERBOX_WIDTH: f32 = 2000.;
 
+#[derive(Component, Default)]
+struct DebugUi {
+    text: Map<&'static str, String>,
+}
+
+impl DebugUi {
+    fn watch(&mut self, key: &'static str, val: impl std::fmt::Debug) {
+        self.text.insert(key, format!("{:?}", val));
+    }
+}
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -27,19 +38,15 @@ fn main() {
         })
         .add_systems(Startup, (setup, setup_anim))
         .add_systems(Update, (sequence_cues, animate_texture, draw_debug))
+        .add_systems(PostUpdate, draw_debug)
         .run();
 }
 
-#[derive(Component)]
-struct DebugText;
-
-fn draw_debug(mut text: Query<&mut Text, With<DebugText>>, time: Res<Time>) {
-    for mut t in &mut text {
-        *t = Text::from_section(
-            format!("time: {:.3}", time.elapsed_seconds()),
-            TextStyle::default(),
-        );
-    }
+fn draw_debug(mut dbg: Query<(&mut Text, &DebugUi)>) {
+    let (mut txt, dbg) = dbg.single_mut();
+    txt.sections = (dbg.text.iter())
+        .map(|(k, v)| TextSection::new(format!("{k}: {v}\n"), default()))
+        .collect();
 }
 
 // ------------------------------- Intro Cutscene -------------------------------
@@ -206,6 +213,7 @@ fn sequence_cues(
     mut commands: Commands,
     mut sequence: ResMut<CueSequencer>,
     time: Res<Time>,
+    mut dbg: Query<&mut DebugUi>,
 ) {
     if !sequence.playing {
         return;
@@ -228,6 +236,9 @@ fn sequence_cues(
             }
         }
     }
+
+    let mut dbg = dbg.single_mut();
+    dbg.watch("time", time.elapsed_seconds());
 }
 
 fn animate_texture(mut tex: Query<(&mut TextureAtlas, &TextureAnimate)>, time: Res<Time>) {
@@ -466,13 +477,12 @@ fn setup(
     });
 
     commands.spawn((
-        DebugText,
-        Text2dBundle {
-            text: Text::from_section("hello, baby!", TextStyle::default()),
-            text_anchor: bevy::sprite::Anchor::TopLeft,
-            transform: Transform {
-                translation: Vec3::new(-380., 280., 101.),
-                scale: Vec3::ONE,
+        DebugUi::default(),
+        TextBundle {
+            style: Style {
+                position_type: PositionType::Absolute,
+                top: Val::Px(10.),
+                left: Val::Px(10.),
                 ..default()
             },
             ..default()
