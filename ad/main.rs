@@ -105,7 +105,6 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Vol("city", 0.),
     Q::Paused("city", false),
     Q::Paused("car_idle", true),
-    Q::Vol("car_idle", 0.),
     Q::Paused("car_brake", true),
     Q::Paused("car_win", true),
     Q::Paused("woosh", true),
@@ -120,6 +119,7 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Tick(2.),
     Q::Tran("car", 700., -50.),
     Q::Paused("car_idle", false),
+    Q::Vol("car_idle", 0.),
     Q::Tick(4.),
     Q::Vol("car_idle", 0.3),
     // brake squeak
@@ -219,6 +219,9 @@ fn sequence_cues(
         return;
     }
 
+    let mut dbg = dbg.single_mut();
+    dbg.watch("time", time.elapsed_seconds());
+
     sequence.time += time.delta_seconds();
     let t = sequence.time;
     for (e, name) in &mut names {
@@ -236,9 +239,6 @@ fn sequence_cues(
             }
         }
     }
-
-    let mut dbg = dbg.single_mut();
-    dbg.watch("time", time.elapsed_seconds());
 }
 
 fn animate_texture(mut tex: Query<(&mut TextureAtlas, &TextureAnimate)>, time: Res<Time>) {
