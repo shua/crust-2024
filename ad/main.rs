@@ -111,7 +111,7 @@ const ANIM_RSC: &'static [AR] = &[
     AR::Sound("car_peels_out", "sounds/car-peels-out.wav", true),
 ];
 const ANIM_CUE: &'static [Q] = &[
-    Q::Tran("baby", 0., -200.),
+    Q::Tran("baby", 60., -200.),
     Q::Vol("city", 0.),
     Q::Paused("city", false),
     Q::Paused("car_idle", true),
@@ -167,10 +167,18 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Tick(1.8),
     Q::Tran("car", 700., -50.),
     Q::Vol("car_idle", 0.),
-    // camera slowly zooms in on baby
     // somber music plays
+    // hold camera for few seconds
+    // camera slowly zooms in on baby
     // sudden baby reveal, upbeat wacky music plays
 ];
+// TODO: move these to ANIM_CUE
+const CAMERA_ZOOM_IN_START_T: f32 = 29.;
+const CAMERA_ZOOM_IN_END_T: f32 = 60.;
+const CAMERA_ZOOM_IN_START_S: f32 = 1.;
+const CAMERA_ZOOM_IN_END_S: f32 = 0.4;
+const CAMERA_ZOOM_IN_START_TR: Vec3 = Vec3::new(0., 0., 0.);
+const CAMERA_ZOOM_IN_END_TR: Vec3 = Vec3::new(60., -230., 0.);
 
 #[derive(Component, Clone, Copy)]
 struct TextureAnimate {
@@ -554,52 +562,38 @@ fn setup_anim(
 #[derive(Component)]
 struct Bezier(CubicSegment<Vec2>);
 
+// TODO: Make this part of CueSequencer
 fn sequence_camera(
-    mut camera: Query<(&mut OrthographicProjection, &Bezier), With<MainCamera>>,
+    mut camera: Query<(&mut OrthographicProjection, &mut Transform, &Bezier), With<MainCamera>>,
     time: Res<Time>,
 ) {
-    let p1_t = 26.0;
-    let p2_t = 43.0;
+    let p1_t = CAMERA_ZOOM_IN_START_T;
+    let p2_t = CAMERA_ZOOM_IN_END_T;
 
-    let p1_s = 1.0;
-    let p2_s = 0.2;
+    let p1_s = CAMERA_ZOOM_IN_START_S;
+    let p2_s = CAMERA_ZOOM_IN_END_S;
+
+    let p1_tr = CAMERA_ZOOM_IN_START_TR;
+    let p2_tr = CAMERA_ZOOM_IN_END_TR;
 
     let t = time.elapsed_seconds();
     let i = inverse_lerp(p1_t..=p2_t, t).unwrap();
 
-    for (mut proj, bez) in &mut camera {
-        proj.scale = lerp(p1_s..=p2_s, bez.0.ease(i));
-    }
+    let Ok((mut proj, mut tran, bez)) = camera.get_single_mut() else {
+        return;
+    };
+
+    let ease = bez.0.ease(i);
+    proj.scale = lerp(p1_s..=p2_s, ease);
+    tran.translation = p1_tr.lerp(p2_tr, ease);
 }
 
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    mut animations: ResMut<Assets<AnimationClip>>,
 ) {
     let camera = Name::new("camera");
-    let mut animation = AnimationClip::default();
-    animation.add_curve_to_path(
-        EntityPath {
-            parts: vec![camera.clone()],
-        },
-        VariableCurve {
-            keyframe_timestamps: vec![26.0, 43.0],
-            keyframes: Keyframes::Translation(vec![
-                Vec3::new(0.0, 0.0, 0.0),  //  in 1
-                Vec3::new(0.0, 0.0, 0.0),  // val 1
-                Vec3::new(5.0, 0.0, 0.0),  // out 1
-                Vec3::new(-5.0, 0.0, 0.0), //  in 2
-                Vec3::new(50., -200., 0.), // val 2
-                Vec3::new(0.0, 0.0, 0.0),  // out 2
-            ]),
-            interpolation: Interpolation::CubicSpline,
-        },
-    );
-    let mut player = AnimationPlayer::default();
-    player.play(animations.add(animation)).repeat();
-
     commands.spawn((
         Camera2dBundle {
             projection: OrthographicProjection {
@@ -615,9 +609,8 @@ fn setup(
         },
         MainCamera {},
         camera,
-        player,
         Bezier(CubicSegment::new_bezier(
-            Vec2::new(0.25, 0.1),
+            Vec2::new(0.25, 0.1), // ease-in-out bezier
             Vec2::new(0.25, 1.0),
         )),
     ));
