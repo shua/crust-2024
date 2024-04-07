@@ -21,12 +21,12 @@ fn main() {
             }),
             ..default()
         }))
-        .insert_resource(SoundSequencer {
+        .insert_resource(CueSequencer {
             playing: true,
             ..default()
         })
         .add_systems(Startup, (setup, setup_anim))
-        .add_systems(Update, (sequence_sounds, animate_texture))
+        .add_systems(Update, (sequence_cues, animate_texture))
         // .add_systems(Update, (sprite_animation, sound_player, volume, draw_debug))
         .run();
 }
@@ -188,7 +188,7 @@ fn sound_player(mut query: Query<(&AudioSink, &mut SoundPlayTimer)>, time: Res<T
 }
 
 // ------------------------------- Intro Cutscene -------------------------------
-enum KF {
+enum Q {
     // advance time
     Tick(f32),
     // set translation
@@ -197,14 +197,11 @@ enum KF {
     Paused(&'static str, bool),
     // sound volume
     Vol(&'static str, f32),
-}
-#[derive(Clone, Copy)]
-enum Cycle {
-    PingPong,
-    Loop,
+    // despawn
+    Despawn(&'static str),
 }
 enum AR {
-    Texture(
+    Sprite(
         &'static str,
         &'static str,
         (f32, f32, usize, usize, f32, Cycle, usize, usize),
@@ -213,56 +210,54 @@ enum AR {
     ),
     Sound(&'static str, &'static str, bool),
 }
-const ANIM: ([AR; 6], [KF; 21]) = (
-    [
-        AR::Texture(
-            "car",
-            "car-sheet.png",
-            (170., 100., 3, 4, 0.11, Cycle::Loop, 1, 6),
-            1.5,
-            true,
-        ),
-        AR::Texture(
-            "baby",
-            "baby-idle-sheet.png",
-            (251., 377., 3, 2, 0.1, Cycle::PingPong, 0, 4),
-            0.5,
-            false,
-        ),
-        AR::Sound("city", "sounds/city-background.wav", false),
-        AR::Sound("car_idle", "sounds/car-idle.wav", false),
-        AR::Sound("car_brake", "sounds/car-brake-squeak.wav", true),
-        AR::Sound("car_win", "sounds/car-window-open.wav", true),
-    ],
-    [
-        KF::Tran("baby", 0., -200.),
-        KF::Vol("city", 0.),
-        KF::Paused("city", false),
-        KF::Paused("car_idle", true),
-        KF::Paused("car_brake", true),
-        KF::Paused("car_win", true),
-        KF::Vol("car_idle", 0.),
-        //
-        KF::Tick(3.),
-        KF::Vol("city", 1.),
-        //
-        KF::Tick(2.),
-        KF::Tran("car", 700., -50.),
-        KF::Paused("car_idle", false),
-        KF::Tick(3.),
-        KF::Vol("car_idle", 0.2),
-        //
-        KF::Tick(1.75),
-        KF::Paused("car_brake", false),
-        KF::Tick(0.25),
-        KF::Tran("car", -50., -150.),
-        KF::Tick(1.),
-        KF::Paused("car_win", false),
-        //
-        KF::Tick(5.),
-        // baby thrown
-    ],
-);
+const ANIM_RSC: &'static [AR] = &[
+    AR::Sprite(
+        "car",
+        "car-sheet.png",
+        (170., 100., 3, 4, 0.11, Cycle::Loop, 1, 6),
+        1.5,
+        true,
+    ),
+    AR::Sprite(
+        "baby",
+        "baby-idle-sheet.png",
+        (251., 377., 3, 2, 0.1, Cycle::PingPong, 0, 4),
+        0.5,
+        false,
+    ),
+    AR::Sound("city", "sounds/city-background.wav", false),
+    AR::Sound("car_idle", "sounds/car-idle.wav", false),
+    AR::Sound("car_brake", "sounds/car-brake-squeak.wav", true),
+    AR::Sound("car_win", "sounds/car-window-open.wav", true),
+];
+const ANIM_CUE: &'static [Q] = &[
+    Q::Tran("baby", 0., -200.),
+    Q::Vol("city", 0.),
+    Q::Paused("city", false),
+    Q::Paused("car_idle", true),
+    Q::Vol("car_idle", 0.),
+    Q::Paused("car_brake", true),
+    Q::Paused("car_win", true),
+    //
+    Q::Tick(3.),
+    Q::Vol("city", 1.),
+    //
+    Q::Tick(2.),
+    Q::Tran("car", 700., -50.),
+    Q::Paused("car_idle", false),
+    Q::Tick(3.),
+    Q::Vol("car_idle", 0.2),
+    //
+    Q::Tick(1.75),
+    Q::Paused("car_brake", false),
+    Q::Tick(0.25),
+    Q::Tran("car", -50., -150.),
+    Q::Tick(1.),
+    Q::Paused("car_win", false),
+    //
+    Q::Tick(5.),
+    // baby thrown
+];
 
 #[derive(Component, Clone, Copy)]
 struct TextureAnimate {
@@ -271,14 +266,20 @@ struct TextureAnimate {
     idx_beg: usize,
     idx_end: usize,
 }
+#[derive(Clone, Copy)]
+enum Cycle {
+    PingPong,
+    Loop,
+}
 #[derive(Resource, Default)]
-struct SoundSequencer {
-    seq: Map<Name, (Vec<(f32, f32)>, Vec<(f32, bool)>)>,
+struct CueSequencer {
+    audio: Map<Name, (Vec<(f32, f32)>, Vec<(f32, bool)>)>,
+    despawn: Map<Name, f32>,
     time: f32,
     playing: bool,
 }
 
-impl SoundSequencer {
+impl CueSequencer {
     fn get_curve<T: Copy>(curve: &Vec<(f32, T)>, time: f32) -> Option<(T, T, f32)> {
         if curve.is_empty() {
             return None;
@@ -300,8 +301,8 @@ impl SoundSequencer {
         return Some((a.1, b.1, 1.));
     }
 
-    fn get(&mut self, name: &Name, time: f32) -> Option<(f32, bool)> {
-        let Some((vol, paused)) = self.seq.get(name) else {
+    fn get_audio(&mut self, name: &Name, time: f32) -> Option<(f32, bool)> {
+        let Some((vol, paused)) = self.audio.get(name) else {
             return None;
         };
         let (vol_a, vol_b, s) = Self::get_curve(vol, time).unwrap_or((1., 1., 1.));
@@ -310,11 +311,20 @@ impl SoundSequencer {
         let paused = if s >= 1. { paused_b } else { paused };
         Some((vol, paused))
     }
+
+    fn get_despawn(&mut self, name: &Name, time: f32) -> bool {
+        if let Some(t) = self.despawn.get(name) {
+            return time >= *t;
+        }
+        return false;
+    }
 }
 
-fn sequence_sounds(
-    mut playback: Query<(&Name, &AudioSink)>,
-    mut sequence: ResMut<SoundSequencer>,
+fn sequence_cues(
+    mut names: Query<(Entity, &Name)>,
+    audio: Query<&AudioSink>,
+    mut commands: Commands,
+    mut sequence: ResMut<CueSequencer>,
     time: Res<Time>,
 ) {
     if !sequence.playing {
@@ -323,11 +333,18 @@ fn sequence_sounds(
 
     sequence.time += time.delta_seconds();
     let t = sequence.time;
-    for (name, sink) in &mut playback {
-        if let Some((vol, paused)) = sequence.get(name, t) {
-            sink.set_volume(vol);
-            if sink.is_paused() && !paused {
-                sink.play();
+    for (e, name) in &mut names {
+        if let Some((vol, paused)) = sequence.get_audio(name, t) {
+            if let Ok(sink) = audio.get(e) {
+                sink.set_volume(vol);
+                if sink.is_paused() && !paused {
+                    sink.play();
+                }
+            }
+        }
+        if sequence.get_despawn(name, t) {
+            if let Some(mut ecmd) = commands.get_entity(e) {
+                ecmd.despawn();
             }
         }
     }
@@ -361,12 +378,12 @@ fn setup_anim(
     asset_server: Res<AssetServer>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     mut animations: ResMut<Assets<AnimationClip>>,
-    mut sequence: ResMut<SoundSequencer>,
+    mut sequence: ResMut<CueSequencer>,
 ) {
     let mut pos: Map<&'static str, Vec3> = Map::new();
-    for kf in ANIM.1.iter() {
-        match kf {
-            KF::Tran(name, x, y) => {
+    for cue in ANIM_CUE.iter() {
+        match cue {
+            Q::Tran(name, x, y) => {
                 if !pos.contains_key(name) {
                     pos.insert(name, Vec3::new(*x, *y, 0.));
                 }
@@ -375,11 +392,10 @@ fn setup_anim(
         }
     }
 
-    let mut sprites: Map<Name, Entity> = Map::new();
-    let mut sounds: Map<Name, Entity> = Map::new();
-    for ar in ANIM.0.iter() {
+    let mut entities: Map<Name, Entity> = Map::new();
+    for ar in ANIM_RSC.iter() {
         match ar {
-            &AR::Texture(
+            &AR::Sprite(
                 name,
                 tex,
                 (width, height, cols, rows, frame_len, cycle, idx_beg, idx_end),
@@ -414,7 +430,7 @@ fn setup_anim(
                         idx_end,
                     },
                 ));
-                sprites.insert(name, cmd.id());
+                entities.insert(name, cmd.id());
             }
             &AR::Sound(name, snd, once) => {
                 let cmd = commands.spawn((
@@ -432,46 +448,81 @@ fn setup_anim(
                         },
                     },
                 ));
-                sounds.insert(Name::new(name), cmd.id());
+                entities.insert(Name::new(name), cmd.id());
             }
         }
     }
 
-    for (name, eid) in &sprites {
+    for (name, eid) in &entities {
         let mut t = 0.;
-        let mut pos_next = None::<Vec3>;
-        let mut stamps = vec![];
-        let mut frames = vec![];
-        for kf in ANIM.1.iter() {
-            match kf {
-                KF::Tick(dt) => {
+
+        let mut pos_next = None;
+        let mut pos_steps = vec![];
+        let mut pos_frames = vec![];
+
+        let mut paused_next = None;
+        let mut vol_next = None;
+        let mut vol_cues = vec![];
+        let mut play_cues = vec![];
+
+        let mut despawn = None;
+
+        for cue in ANIM_CUE.iter() {
+            match cue {
+                Q::Tran(kname, x, y) if *kname == name.as_str() => {
+                    pos_next = Some(Vec3::new(*x, *y, 0.));
+                }
+                Q::Paused(kname, paused) if *kname == name.as_str() => {
+                    paused_next = Some(*paused);
+                }
+                Q::Vol(kname, vol) if *kname == name.as_str() => {
+                    vol_next = Some(*vol);
+                }
+                Q::Despawn(kname) if *kname == name.as_str() => {
+                    despawn = Some(t);
+                }
+                Q::Tick(dt) => {
                     if let Some(pos_next) = pos_next.take() {
-                        frames.push(pos_next);
-                        stamps.push(t);
+                        pos_frames.push(pos_next);
+                        pos_steps.push(t);
+                    }
+                    if let Some(vol) = vol_next.take() {
+                        vol_cues.push((t, vol));
+                    }
+                    if let Some(paused) = paused_next.take() {
+                        play_cues.push((t, paused));
                     }
                     t += dt;
-                }
-                KF::Tran(kname, x, y) if name.as_str() == *kname => {
-                    pos_next = Some(Vec3::new(*x, *y, 0.));
                 }
                 _ => {}
             }
         }
 
         if let Some(pos_next) = pos_next {
-            frames.push(pos_next);
-            stamps.push(t);
+            pos_frames.push(pos_next);
+            pos_steps.push(t);
         }
 
-        if !frames.is_empty() {
+        if let Some(vol) = vol_next.take() {
+            vol_cues.push((t, vol));
+        }
+        if let Some(paused) = paused_next.take() {
+            play_cues.push((t, paused));
+        }
+
+        if let Some(t) = despawn {
+            sequence.despawn.insert(name.clone(), t);
+        }
+
+        if !pos_frames.is_empty() {
             let mut anim = AnimationClip::default();
             anim.add_curve_to_path(
                 EntityPath {
                     parts: vec![name.clone()],
                 },
                 VariableCurve {
-                    keyframe_timestamps: stamps,
-                    keyframes: Keyframes::Translation(frames),
+                    keyframe_timestamps: pos_steps,
+                    keyframes: Keyframes::Translation(pos_frames),
                     interpolation: Interpolation::Linear,
                 },
             );
@@ -480,42 +531,9 @@ fn setup_anim(
             player.play(animations.add(anim));
             commands.entity(*eid).insert(player);
         }
-    }
 
-    for (name, _) in sounds {
-        let mut t = 0.;
-        let mut next_paused = None;
-        let mut next_vol = None;
-        let mut curves = (vec![], vec![]);
-        for kf in ANIM.1.iter() {
-            match kf {
-                KF::Tick(dt) => {
-                    if let Some(vol) = next_vol.take() {
-                        curves.0.push((t, vol));
-                    }
-                    if let Some(paused) = next_paused.take() {
-                        curves.1.push((t, paused));
-                    }
-                    t += dt;
-                }
-                KF::Paused(kname, paused) if *kname == name.as_str() => {
-                    next_paused = Some(*paused);
-                }
-                KF::Vol(kname, vol) if *kname == name.as_str() => {
-                    next_vol = Some(*vol);
-                }
-                _ => {}
-            }
-        }
-        if let Some(vol) = next_vol.take() {
-            curves.0.push((t, vol));
-        }
-        if let Some(paused) = next_paused.take() {
-            curves.1.push((t, paused));
-        }
-
-        if !(curves.0.is_empty() && curves.1.is_empty()) {
-            sequence.seq.insert(name.clone(), curves);
+        if !(vol_cues.is_empty() && play_cues.is_empty()) {
+            sequence.audio.insert(name.clone(), (vol_cues, play_cues));
         }
     }
 }
