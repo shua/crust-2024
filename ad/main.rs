@@ -9,7 +9,7 @@ use std::collections::HashMap as Map;
 const WINDOW_WIDTH: f32 = 800.;
 const WINDOW_HEIGHT: f32 = 600.;
 // surely this should be wide enough
-const LETTERBOX_WIDTH: f32 = 2000.;
+const PILLARBOX_WIDTH: f32 = 2000.;
 
 #[derive(Component, Default)]
 struct DebugUi {
@@ -542,19 +542,19 @@ fn setup(
         },
     ));
 
-    // Vertical Letterboxes
-    let letterbox_h_offset = (WINDOW_WIDTH + LETTERBOX_WIDTH) / 2.;
+    // Pillarboxes
+    let pillarbox_h_offset = (WINDOW_WIDTH + PILLARBOX_WIDTH) / 2.;
     commands.spawn(MaterialMesh2dBundle {
-        mesh: Mesh2dHandle(meshes.add(Rectangle::new(LETTERBOX_WIDTH, WINDOW_WIDTH))),
+        mesh: Mesh2dHandle(meshes.add(Rectangle::new(PILLARBOX_WIDTH, WINDOW_WIDTH))),
         material: materials.add(Color::BLACK),
-        transform: Transform::from_xyz(letterbox_h_offset, 0., 100.),
+        transform: Transform::from_xyz(pillarbox_h_offset, 0., 100.),
         ..default()
     });
 
     commands.spawn(MaterialMesh2dBundle {
-        mesh: Mesh2dHandle(meshes.add(Rectangle::new(LETTERBOX_WIDTH, WINDOW_WIDTH))),
+        mesh: Mesh2dHandle(meshes.add(Rectangle::new(PILLARBOX_WIDTH, WINDOW_WIDTH))),
         material: materials.add(Color::BLACK),
-        transform: Transform::from_xyz(-letterbox_h_offset, 0., 100.),
+        transform: Transform::from_xyz(-pillarbox_h_offset, 0., 100.),
         ..default()
     });
 }
