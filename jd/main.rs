@@ -1,5 +1,5 @@
+use std::collections::HashMap as Map;
 use std::f32::consts::PI;
-use std::{collections::HashMap as Map, f32::consts::FRAC_2_SQRT_PI};
 
 use bevy::{
     app::AppExit,
@@ -99,24 +99,22 @@ impl Tile {
         pos: Vec3,
         tile_types: &TileTypes,
     ) -> bevy::ecs::system::EntityCommands<'c> {
-        let rect: Option<_>;
-        let tex: Handle<_>;
-        if let &Some((ref hndl, (w, h), s)) = &tile_types[t as usize].2 {
+        let &(color, collide, ref tex_cfg) = &tile_types[t as usize];
+        let mut rect = None;
+        let mut tex = default();
+        if let &Some((ref hndl, (w, h), s)) = tex_cfg {
             let u = (pos.x * s / TILE_SZ).rem_euclid(w);
             let v = ((-pos.y) * s / TILE_SZ).rem_euclid(h);
             rect = Some(Rect::new(u, v, u + s, v + s));
             tex = hndl.clone();
-        } else {
-            rect = None;
-            tex = Handle::default();
         }
 
         commands.spawn((
-            tile_types[t as usize].1,
+            collide,
             Tile(t),
             SpriteBundle {
                 sprite: Sprite {
-                    color: tile_types[t as usize].0,
+                    color,
                     custom_size: Some(Vec2::ONE),
                     rect,
                     ..default()
@@ -182,25 +180,37 @@ fn setup_graphics(
         },
     ));
 
-    let garbage_bg = Some((assets.load("tiled_garbage.png"), (1500., 1000.), 200.));
+    let garbage_bg = (assets.load("tiled_garbage.png"), (1500., 1000.), 200.);
+    command.spawn(SpriteBundle {
+        sprite: Sprite {
+            color: Color::rgb(0.2, 0.2, 0.5),
+            ..default()
+        },
+        transform: Transform {
+            translation: Vec3::new(0., 0., -10.),
+            scale: Vec3::splat(0.6),
+            ..default()
+        },
+        texture: garbage_bg.0.clone(),
+        ..default()
+    });
     tile_types.0.extend([
-        (Color::default(), Collide::Square, garbage_bg.clone()),
-        (Color::RED, Collide::StepR, garbage_bg.clone()),
-        (Color::BLUE, Collide::StepL, garbage_bg.clone()),
+        (
+            Color::rgb(0.5, 0.5, 1.0),
+            Collide::Square,
+            Some(garbage_bg.clone()),
+        ),
+        (Color::RED, Collide::StepR, Some(garbage_bg.clone())),
+        (Color::BLUE, Collide::StepL, Some(garbage_bg.clone())),
     ]);
-    let map_origin = MAP.0.extend(0.);
+    let map_origin = MAP.0;
     for (i, &t) in MAP.2.iter().rev().enumerate() {
         if t == 0 {
             continue;
         }
         let (x, y) = (MAP.1 - (i % MAP.1) - 1, i / MAP.1);
-        let (x, y) = (x as f32 * TILE_SZ, y as f32 * TILE_SZ);
-        Tile::spawn(
-            &mut command,
-            t,
-            map_origin + Vec3::new(x, y, 0.),
-            &tile_types,
-        );
+        let v = Vec2::new(x as f32, y as f32) * Vec2::splat(TILE_SZ);
+        Tile::spawn(&mut command, t, (map_origin + v).extend(0.), &tile_types);
     }
 
     for mut win in &mut win {
@@ -320,14 +330,16 @@ fn collide_push(aabb: &Aabb2d, col: &Collide, col_aabb: &Aabb2d) -> (Vec2, bool,
                 return (Vec2::ZERO, false, false);
             }
             let dist = (p - a - ((p - a).dot(n) * n)).length();
-            let push = if horz.abs() < dist {
-                Vec2::new(horz, 0.)
-            } else if vert.abs() < dist {
-                Vec2::new(0., vert)
-            } else {
-                Vec2::new(FRAC_1_SQRT_2, FRAC_1_SQRT_2) * dist
-            };
-            (push, false, matches!(col, Collide::StepL))
+            let dampv = matches!(col, Collide::StepL);
+            match (
+                horz.abs() < dist,
+                horz.abs() < vert.abs(),
+                vert.abs() < dist,
+            ) {
+                (true, true, _) => (Vec2::new(horz, 0.), true, false),
+                (_, false, true) => (Vec2::new(0., vert), false, true),
+                _ => (Vec2::new(FRAC_1_SQRT_2, FRAC_1_SQRT_2) * dist, false, dampv),
+            }
         }
         Collide::StepR | Collide::SlopeR => {
             // collide like a triangel /|
@@ -339,14 +351,20 @@ fn collide_push(aabb: &Aabb2d, col: &Collide, col_aabb: &Aabb2d) -> (Vec2, bool,
                 return (Vec2::ZERO, false, false);
             }
             let dist = (p - a - ((p - a).dot(n) * n)).length();
-            let push = if horz.abs() < dist {
-                Vec2::new(horz, 0.)
-            } else if vert.abs() < dist {
-                Vec2::new(0., vert)
-            } else {
-                Vec2::new(-FRAC_1_SQRT_2, FRAC_1_SQRT_2) * dist
-            };
-            (push, false, matches!(col, Collide::StepR))
+            let dampv = matches!(col, Collide::StepR);
+            match (
+                horz.abs() < dist,
+                horz.abs() < vert.abs(),
+                vert.abs() < dist,
+            ) {
+                (true, true, _) => (Vec2::new(horz, 0.), true, false),
+                (_, false, true) => (Vec2::new(0., vert), false, true),
+                _ => (
+                    Vec2::new(-FRAC_1_SQRT_2, FRAC_1_SQRT_2) * dist,
+                    false,
+                    dampv,
+                ),
+            }
         }
     }
 }
