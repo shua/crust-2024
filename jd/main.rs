@@ -1,5 +1,5 @@
-use std::collections::HashMap as Map;
 use std::f32::consts::PI;
+use std::{collections::HashMap as Map, f32::consts::FRAC_2_SQRT_PI};
 
 use bevy::{
     app::AppExit,
@@ -11,8 +11,15 @@ use bevy::{
 
 #[derive(Component)]
 struct Control;
-#[derive(Component)]
-struct Collide;
+#[derive(Component, Clone, Copy, Default, Debug)]
+enum Collide {
+    #[default]
+    Square,
+    StepL,
+    StepR,
+    SlopeL,
+    SlopeR,
+}
 #[derive(Resource)]
 struct PhysicsTick(f32);
 #[derive(Component, Default)]
@@ -27,7 +34,7 @@ struct Tile(u8);
 #[derive(Event)]
 struct Quit; // custom quit event used to save map before actual AppExit
 #[derive(Resource, Default, Deref)]
-struct TileTypes(Vec<(Color, Handle<Image>, Vec2)>);
+struct TileTypes(Vec<(Color, Collide, Option<(Handle<Image>, (f32, f32), f32)>)>);
 
 #[derive(Component, Default)]
 struct DebugUi {
@@ -60,7 +67,10 @@ fn main() {
         .insert_resource(TileTypes(vec![default()]))
         .add_event::<Quit>()
         .add_systems(Startup, setup_graphics)
-        .add_systems(Update, (check_kbd, check_collide, update_movement).chain())
+        .add_systems(
+            Update,
+            (check_kbd, check_collide, update_movement, update_camera).chain(),
+        )
         .add_systems(Update, (check_mouse, on_quit))
         .add_systems(PostUpdate, draw_debug)
         .run();
@@ -87,24 +97,28 @@ impl Tile {
         commands: &'c mut Commands,
         t: u8,
         pos: Vec3,
-        tile_sprites: &TileTypes,
+        tile_types: &TileTypes,
     ) -> bevy::ecs::system::EntityCommands<'c> {
-        let (width, height) = (1500., 1000.);
-        // 1500 = 3*100*5*10 = 3*10^3*5 = 3*2^3*5^4
-        // 1000 = 10^3 = 2^3*5^3
-        // so should be some denominator of 2^3 * 5^3
-        let image_tile_sz = 200.;
-        let u = (pos.x * image_tile_sz / TILE_SZ).rem_euclid(width);
-        let v = ((-pos.y) * image_tile_sz / TILE_SZ).rem_euclid(height);
+        let rect: Option<_>;
+        let tex: Handle<_>;
+        if let &Some((ref hndl, (w, h), s)) = &tile_types[t as usize].2 {
+            let u = (pos.x * s / TILE_SZ).rem_euclid(w);
+            let v = ((-pos.y) * s / TILE_SZ).rem_euclid(h);
+            rect = Some(Rect::new(u, v, u + s, v + s));
+            tex = hndl.clone();
+        } else {
+            rect = None;
+            tex = Handle::default();
+        }
 
         commands.spawn((
-            Collide,
+            tile_types[t as usize].1,
             Tile(t),
             SpriteBundle {
                 sprite: Sprite {
-                    color: tile_sprites[t as usize].0,
+                    color: tile_types[t as usize].0,
                     custom_size: Some(Vec2::ONE),
-                    rect: Some(Rect::new(u, v, u + image_tile_sz, v + image_tile_sz)),
+                    rect,
                     ..default()
                 },
                 transform: Transform {
@@ -112,7 +126,7 @@ impl Tile {
                     scale: Vec3::new(TILE_SZ, TILE_SZ, 1.),
                     ..default()
                 },
-                texture: tile_sprites[t as usize].1.clone(),
+                texture: tex,
                 ..default()
             },
         ))
@@ -152,7 +166,6 @@ fn setup_graphics(
 
     command.spawn((
         Control,
-        Collide,
         Movement::default(),
         SpriteBundle {
             sprite: Sprite {
@@ -169,13 +182,11 @@ fn setup_graphics(
         },
     ));
 
+    let garbage_bg = Some((assets.load("tiled_garbage.png"), (1500., 1000.), 200.));
     tile_types.0.extend([
-        (
-            Color::default(),
-            assets.load("tiled_garbage.png"),
-            Vec2::new(10., 10.),
-        ),
-        (Color::GREEN, Handle::default(), Vec2::default()),
+        (Color::default(), Collide::Square, garbage_bg.clone()),
+        (Color::RED, Collide::StepR, garbage_bg.clone()),
+        (Color::BLUE, Collide::StepL, garbage_bg.clone()),
     ]);
     let map_origin = MAP.0.extend(0.);
     for (i, &t) in MAP.2.iter().rev().enumerate() {
@@ -235,9 +246,10 @@ fn check_mouse(
     mut tiles: Query<(
         Entity,
         &Transform,
+        &mut Tile,
         &mut Sprite,
         &mut Handle<Image>,
-        &mut Tile,
+        &mut Collide,
     )>,
     tile_types: Res<TileTypes>,
     mut commands: Commands,
@@ -256,7 +268,7 @@ fn check_mouse(
 
     if mouse.just_pressed(MouseButton::Left) {
         let cursor_pt = Aabb2d::new(cursor, Vec2::ZERO);
-        for (e, trans, mut s, mut img, mut tile) in &mut tiles {
+        for (e, trans, mut tile, mut s, mut img, mut col) in &mut tiles {
             let tile_box = Aabb2d::new(trans.translation.xy(), trans.scale.xy() / 2.);
             if !tile_box.contains(&cursor_pt) {
                 continue;
@@ -267,7 +279,12 @@ fn check_mouse(
                 commands.get_entity(e).unwrap().despawn();
             } else {
                 s.color = tile_types.0[tile.0 as usize].0;
-                *img = tile_types.0[tile.0 as usize].1.clone();
+                if let Some((hndl, _, _)) = &tile_types.0[tile.0 as usize].2 {
+                    *img = hndl.clone();
+                } else {
+                    *img = default();
+                }
+                *col = tile_types.0[tile.0 as usize].1;
             }
             return;
         }
@@ -278,6 +295,62 @@ fn check_mouse(
     }
 }
 
+fn collide_push(aabb: &Aabb2d, col: &Collide, col_aabb: &Aabb2d) -> (Vec2, bool, bool) {
+    let lt = col_aabb.min.x - aabb.max.x;
+    let rt = col_aabb.max.x - aabb.min.x;
+    let up = col_aabb.max.y - aabb.min.y;
+    let dn = col_aabb.min.y - aabb.max.y;
+    let horz = if lt.abs() < rt.abs() { lt } else { rt };
+    let vert = if dn.abs() < up.abs() { dn } else { up };
+    match col {
+        Collide::Square => {
+            if horz.abs() > vert.abs() {
+                (Vec2::new(0., vert), false, true)
+            } else {
+                (Vec2::new(horz, 0.), true, false)
+            }
+        }
+        Collide::StepL | Collide::SlopeL => {
+            // collide like a triangle |\
+            use std::f32::consts::FRAC_1_SQRT_2;
+            let n = Vec2::new(FRAC_1_SQRT_2, -FRAC_1_SQRT_2);
+            let a = col_aabb.center();
+            let p = aabb.min;
+            if (p - a).y > -(p - a).x {
+                return (Vec2::ZERO, false, false);
+            }
+            let dist = (p - a - ((p - a).dot(n) * n)).length();
+            let push = if horz.abs() < dist {
+                Vec2::new(horz, 0.)
+            } else if vert.abs() < dist {
+                Vec2::new(0., vert)
+            } else {
+                Vec2::new(FRAC_1_SQRT_2, FRAC_1_SQRT_2) * dist
+            };
+            (push, false, matches!(col, Collide::StepL))
+        }
+        Collide::StepR | Collide::SlopeR => {
+            // collide like a triangel /|
+            use std::f32::consts::FRAC_1_SQRT_2;
+            let n = Vec2::new(-FRAC_1_SQRT_2, -FRAC_1_SQRT_2);
+            let a = col_aabb.center();
+            let p = Vec2::new(aabb.max.x, aabb.min.y);
+            if (p - a).y > (p - a).x {
+                return (Vec2::ZERO, false, false);
+            }
+            let dist = (p - a - ((p - a).dot(n) * n)).length();
+            let push = if horz.abs() < dist {
+                Vec2::new(horz, 0.)
+            } else if vert.abs() < dist {
+                Vec2::new(0., vert)
+            } else {
+                Vec2::new(-FRAC_1_SQRT_2, FRAC_1_SQRT_2) * dist
+            };
+            (push, false, matches!(col, Collide::StepR))
+        }
+    }
+}
+
 // the intent is to cast the ctl's aabb along ctl's velocity and check for any collisions
 // if there are any collisions, then reduce velocity until there aren't
 //
@@ -285,11 +358,11 @@ fn check_mouse(
 fn check_collide(
     time: Res<Time>,
     mut update_rem: ResMut<PhysicsTick>,
-    mut ctl: Query<(Entity, &Transform, &mut Movement, &mut Sprite), With<Control>>,
-    col: Query<(Entity, &Transform), With<Collide>>,
+    mut ctl: Query<(&Transform, &mut Movement), With<Control>>,
+    col: Query<(&Transform, &Collide)>,
     mut dbg: Query<&mut DebugUi>,
 ) {
-    let (e, t, mut v, _) = ctl.single_mut();
+    let (t, mut v) = ctl.single_mut();
     if v.ctl + v.force == Vec2::ZERO {
         v.out = Vec2::ZERO;
         return;
@@ -305,14 +378,14 @@ fn check_collide(
         collisions = vec![];
         v.force += Vec2::new(0., -9.8 / 60.);
         aabb = Aabb2d::new(aabb.center() + v.ctl.xy() + v.force.xy(), aabb.half_size());
-        for (ec, col) in &col {
-            if ec == e {
-                continue;
-            }
-
+        for (col, &c) in &col {
             let col_aabb = Aabb2d::new(col.translation.xy(), col.scale.xy() / 2.);
             if aabb.intersects(&col_aabb) {
-                collisions.push(col_aabb);
+                collisions.push((
+                    (col_aabb.center() - aabb.center()).length_squared(),
+                    c,
+                    col_aabb,
+                ));
             }
         }
 
@@ -322,41 +395,30 @@ fn check_collide(
         // });
 
         // sort by distance to aabb
-        collisions.sort_by(|c1, c2| {
-            (c1.center() - aabb.center())
-                .length_squared()
-                .total_cmp(&(c2.center() - aabb.center()).length_squared())
-        });
+        collisions.sort_by(|c1, c2| c1.0.total_cmp(&c2.0));
 
-        for col_aabb in &collisions {
+        for (_, col, col_aabb) in &collisions {
             if !aabb.intersects(col_aabb) {
                 continue;
             }
-            let lt = col_aabb.min.x - aabb.max.x;
-            let rt = col_aabb.max.x - aabb.min.x;
-            let up = col_aabb.max.y - aabb.min.y;
-            let dn = col_aabb.min.y - aabb.max.y;
-            let horz = if lt.abs() < rt.abs() { lt } else { rt };
-            let vert = if dn.abs() < up.abs() { dn } else { up };
-            if horz.abs() > vert.abs() {
-                // uncomment these, and he can no longer walk on ceilings
-                // if vert.signum() != v.force.y.signum() {
-                v.force.y = 0.;
-                // }
-                if vert < 0. {
+            let (push, damph, dampv) = collide_push(&aabb, col, col_aabb);
+            if push == Vec2::ZERO {
+                continue;
+            }
+
+            if dampv {
+                if v.ctl.y > 0. && push.y < 0. {
                     v.climb = true;
                 }
-                aabb.min.y += vert;
-                aabb.max.y += vert;
-            } else {
-                // if push is opposite to the forces applied
-                // then we've hit a wall, and we cancel the force
-                if horz.signum() != v.force.x.signum() {
+                v.force.y = 0.;
+            }
+            if damph {
+                if push.x.signum() != v.force.x.signum() {
                     v.force.x = 0.;
                 }
-                aabb.min.x += horz;
-                aabb.max.x += horz;
             }
+            aabb.min += push;
+            aabb.max += push;
         }
         dt -= 1.;
     }
@@ -367,7 +429,7 @@ fn check_collide(
         dbg.watch("pos", t.translation);
         dbg.watch("rot", t.rotation.to_axis_angle());
         dbg.watch("climb", v.climb);
-        dbg.collisions = collisions;
+        dbg.collisions = collisions.into_iter().map(|(_, _, c)| c).collect();
         dbg.ctl_aabb = Some(aabb);
     }
 
@@ -398,6 +460,27 @@ fn update_movement(mut movers: Query<(&mut Transform, &Movement, &mut Sprite)>) 
         // kill box
         if t.translation.y < -1000. {
             t.translation = Vec3::ZERO;
+        }
+    }
+}
+
+fn update_camera(
+    mut trans: Query<&mut Transform>,
+    cam: Query<Entity, With<Camera>>,
+    ctl: Query<Entity, With<Control>>,
+) {
+    let ctl = ctl.single();
+    let ctl = trans.get(ctl).unwrap().translation;
+
+    let cam = cam.single();
+    let mut cam = trans.get_mut(cam).unwrap();
+    let cam_bound = 100.;
+    if (ctl.x - cam.translation.x).abs() > cam_bound {
+        let dx = ctl.x - cam.translation.x;
+        if dx < 0. {
+            cam.translation.x += dx + cam_bound;
+        } else {
+            cam.translation.x += dx - cam_bound;
         }
     }
 }
