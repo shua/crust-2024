@@ -4,6 +4,7 @@ use bevy::{
     render::camera::ScalingMode,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
 };
+use bevy_editor_pls::egui::{emath::inverse_lerp, lerp};
 use std::collections::HashMap as Map;
 
 const WINDOW_WIDTH: f32 = 800.;
@@ -37,7 +38,10 @@ fn main() {
             ..default()
         })
         .add_systems(Startup, (setup, setup_anim))
-        .add_systems(Update, (sequence_cues, animate_texture, draw_debug))
+        .add_systems(
+            Update,
+            (sequence_cues, sequence_camera, animate_texture, draw_debug),
+        )
         .add_systems(PostUpdate, draw_debug)
         .run();
 }
@@ -306,6 +310,9 @@ fn animate_texture(mut tex: Query<(&mut TextureAtlas, &TextureAnimate)>, time: R
     }
 }
 
+#[derive(Component)]
+struct MainCamera;
+
 fn setup_anim(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -544,23 +551,76 @@ fn setup_anim(
     }
 }
 
+#[derive(Component)]
+struct Bezier(CubicSegment<Vec2>);
+
+fn sequence_camera(
+    mut camera: Query<(&mut OrthographicProjection, &Bezier), With<MainCamera>>,
+    time: Res<Time>,
+) {
+    let p1_t = 26.0;
+    let p2_t = 43.0;
+
+    let p1_s = 1.0;
+    let p2_s = 0.2;
+
+    let t = time.elapsed_seconds();
+    let i = inverse_lerp(p1_t..=p2_t, t).unwrap();
+
+    for (mut proj, bez) in &mut camera {
+        proj.scale = lerp(p1_s..=p2_s, bez.0.ease(i));
+    }
+}
+
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    mut animations: ResMut<Assets<AnimationClip>>,
 ) {
-    commands.spawn(Camera2dBundle {
-        projection: OrthographicProjection {
-            // When creating our own OrthographicProjection we need to set the far and near
-            // values ourselves.
-            // See: https://bevy-cheatbook.github.io/2d/camera.html#caveat-nearfar-values
-            far: 1000.,
-            near: -1000.,
-            scaling_mode: ScalingMode::FixedVertical(WINDOW_HEIGHT),
+    let camera = Name::new("camera");
+    let mut animation = AnimationClip::default();
+    animation.add_curve_to_path(
+        EntityPath {
+            parts: vec![camera.clone()],
+        },
+        VariableCurve {
+            keyframe_timestamps: vec![26.0, 43.0],
+            keyframes: Keyframes::Translation(vec![
+                Vec3::new(0.0, 0.0, 0.0),  //  in 1
+                Vec3::new(0.0, 0.0, 0.0),  // val 1
+                Vec3::new(5.0, 0.0, 0.0),  // out 1
+                Vec3::new(-5.0, 0.0, 0.0), //  in 2
+                Vec3::new(50., -200., 0.), // val 2
+                Vec3::new(0.0, 0.0, 0.0),  // out 2
+            ]),
+            interpolation: Interpolation::CubicSpline,
+        },
+    );
+    let mut player = AnimationPlayer::default();
+    player.play(animations.add(animation)).repeat();
+
+    commands.spawn((
+        Camera2dBundle {
+            projection: OrthographicProjection {
+                // When creating our own OrthographicProjection we need to set the far and near
+                // values ourselves.
+                // See: https://bevy-cheatbook.github.io/2d/camera.html#caveat-nearfar-values
+                far: 1000.,
+                near: -1000.,
+                scaling_mode: ScalingMode::FixedVertical(WINDOW_HEIGHT),
+                ..default()
+            },
             ..default()
         },
-        ..default()
-    });
+        MainCamera {},
+        camera,
+        player,
+        Bezier(CubicSegment::new_bezier(
+            Vec2::new(0.25, 0.1),
+            Vec2::new(0.25, 1.0),
+        )),
+    ));
 
     commands.spawn((
         DebugUi::default(),
