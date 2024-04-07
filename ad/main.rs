@@ -178,7 +178,7 @@ const CAMERA_ZOOM_IN_END_T: f32 = 60.;
 const CAMERA_ZOOM_IN_START_S: f32 = 1.;
 const CAMERA_ZOOM_IN_END_S: f32 = 0.4;
 const CAMERA_ZOOM_IN_START_TR: Vec3 = Vec3::new(0., 0., 0.);
-const CAMERA_ZOOM_IN_END_TR: Vec3 = Vec3::new(60., -230., 0.);
+const CAMERA_ZOOM_IN_END_TR: Vec3 = Vec3::new(60., -200., 0.);
 
 #[derive(Component, Clone, Copy)]
 struct TextureAnimate {
@@ -610,8 +610,8 @@ fn setup(
         MainCamera {},
         camera,
         Bezier(CubicSegment::new_bezier(
-            Vec2::new(0.25, 0.1), // ease-in-out bezier
-            Vec2::new(0.25, 1.0),
+            Vec2::new(0.35, 0.), // ease-in-out bezier
+            Vec2::new(0.7, 1.),
         )),
     ));
 
