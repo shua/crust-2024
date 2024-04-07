@@ -318,9 +318,6 @@ fn animate_texture(mut tex: Query<(&mut TextureAtlas, &TextureAnimate)>, time: R
     }
 }
 
-#[derive(Component)]
-struct MainCamera;
-
 fn setup_anim(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -561,6 +558,9 @@ fn setup_anim(
 
 #[derive(Component)]
 struct Bezier(CubicSegment<Vec2>);
+
+#[derive(Component)]
+struct MainCamera;
 
 // TODO: Make this part of CueSequencer
 fn sequence_camera(
