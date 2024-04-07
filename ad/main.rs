@@ -172,6 +172,9 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Tick(1.8),
     Q::Tran("car", 700., -50., 0.),
     Q::Vol("car_idle", 0.),
+    // somber music plays
+    // hold camera for few seconds
+    // camera slowly zooms in on baby
     // baby wriggles on ground
     Q::Tick(5.0),
     Q::Rot("baby_thrown", 1.6),
@@ -255,10 +258,11 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Rot("baby_thrown", 1.6),
     Q::Tick(0.6),
     Q::Rot("baby_thrown", 1.5),
-    // somber music plays
-    // hold camera for few seconds
-    // camera slowly zooms in on baby
     // sudden baby reveal, upbeat wacky music plays
+    Q::Tran("baby", 60., -200., -10.),
+    Q::Despawn("baby_thrown"),
+    Q::Tick(1.0),
+    Q::Tran("baby", 60., -200., 0.),
 ];
 // TODO: move these to ANIM_CUE
 const CAMERA_ZOOM_IN_START_T: f32 = 29.;
