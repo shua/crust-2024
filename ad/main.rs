@@ -102,6 +102,7 @@ const ANIM_RSC: &'static [AR] = &[
     AR::Sound("car_win_close", "sounds/car-window-close.wav", true),
     AR::Sound("woosh", "sounds/woosh.wav", true),
     AR::Sound("thump", "sounds/thump.wav", true),
+    AR::Sound("car_peels_out", "sounds/car-peels-out.wav", true),
 ];
 const ANIM_CUE: &'static [Q] = &[
     Q::Tran("baby", 0., -200.),
@@ -111,6 +112,7 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Paused("car_brake", true),
     Q::Paused("car_win_open", true),
     Q::Paused("car_win_close", true),
+    Q::Paused("car_peels_out", true),
     Q::Paused("woosh", true),
     Q::Paused("thump", true),
     // background soundscape fades in
@@ -148,7 +150,14 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Tick(4.),
     Q::Flip("car", false),
     // car burnout
-    // car sound fades
+    Q::Tick(1.),
+    Q::Tran("car", -50., -150.),
+    Q::Paused("car_peels_out", false),
+    Q::Vol("car_idle", 1.0),
+    // car sound fades away
+    Q::Tick(2.),
+    Q::Tran("car", 700., -50.),
+    Q::Vol("car_idle", 0.),
     // camera slowly zooms in on baby
     // somber music plays
     // sudden baby reveal, upbeat wacky music plays
