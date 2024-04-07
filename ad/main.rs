@@ -55,6 +55,8 @@ enum Q {
     Tick(f32),
     // set translation
     Tran(&'static str, f32, f32),
+    // set flip x
+    Flip(&'static str, bool),
     // sound paused
     Paused(&'static str, bool),
     // sound volume
@@ -143,6 +145,8 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Tick(1.),
     Q::Paused("car_win_close", false),
     // car turns around
+    Q::Tick(4.),
+    Q::Flip("car", false),
     // car burnout
     // car sound fades
     // camera slowly zooms in on baby
@@ -166,6 +170,7 @@ enum Cycle {
 struct CueSequencer {
     audio: Map<Name, (Vec<(f32, f32)>, Vec<(f32, bool)>)>,
     despawn: Map<Name, f32>,
+    flip: Map<Name, Vec<(f32, bool)>>,
     time: f32,
     playing: bool,
 }
@@ -209,11 +214,25 @@ impl CueSequencer {
         }
         return false;
     }
+
+    fn get_flip(&mut self, name: &Name, time: f32) -> Option<bool> {
+        let Some(flips) = self.flip.get(name) else {
+            return None;
+        };
+        let mut flip = None;
+        for (t, f) in flips {
+            if time >= *t {
+                flip = Some(*f);
+            }
+        }
+        flip
+    }
 }
 
 fn sequence_cues(
     mut names: Query<(Entity, &Name)>,
     audio: Query<&AudioSink>,
+    mut sprite: Query<&mut Sprite>,
     mut commands: Commands,
     mut sequence: ResMut<CueSequencer>,
     time: Res<Time>,
@@ -240,6 +259,11 @@ fn sequence_cues(
         if sequence.get_despawn(name, t) {
             if let Some(mut ecmd) = commands.get_entity(e) {
                 ecmd.despawn();
+            }
+        }
+        if let Some(flip) = sequence.get_flip(name, t) {
+            if let Ok(mut s) = sprite.get_mut(e) {
+                s.flip_x = flip;
             }
         }
     }
@@ -388,6 +412,8 @@ fn setup_anim(
         let mut vol_next = None;
         let mut vol_cues = vec![];
         let mut play_cues = vec![];
+        let mut flip_next = None;
+        let mut flip_cues = vec![];
 
         let mut despawn = None;
 
@@ -405,6 +431,9 @@ fn setup_anim(
                 Q::Despawn(kname) if *kname == name.as_str() => {
                     despawn = Some(t);
                 }
+                Q::Flip(kname, flip) if *kname == name.as_str() => {
+                    flip_next = Some(*flip);
+                }
                 Q::Tick(dt) => {
                     if let Some(pos_next) = pos_next.take() {
                         pos_frames.push(pos_next);
@@ -415,6 +444,9 @@ fn setup_anim(
                     }
                     if let Some(paused) = paused_next.take() {
                         play_cues.push((t, paused));
+                    }
+                    if let Some(flip) = flip_next.take() {
+                        flip_cues.push((t, flip));
                     }
                     t += dt;
                 }
@@ -438,6 +470,10 @@ fn setup_anim(
             sequence.despawn.insert(name.clone(), t);
         }
 
+        if let Some(flip) = flip_next.take() {
+            flip_cues.push((t, flip));
+        }
+
         if !pos_frames.is_empty() {
             let mut anim = AnimationClip::default();
             anim.add_curve_to_path(
@@ -458,6 +494,10 @@ fn setup_anim(
 
         if !(vol_cues.is_empty() && play_cues.is_empty()) {
             sequence.audio.insert(name.clone(), (vol_cues, play_cues));
+        }
+
+        if !flip_cues.is_empty() {
+            sequence.flip.insert(name.clone(), flip_cues);
         }
     }
 }
