@@ -89,13 +89,6 @@ const ANIM_RSC: &'static [AR] = &[
     AR::Image("pile2", "scenes/intro/pile_2.png", (0., -35., 10.), 1.),
     AR::Image("baby_thrown", "baby-thrown.png", (0., 0., -10.), 0.4),
     AR::Sprite(
-        "rain",
-        "rain-sheet.png",
-        (1000., 1000., 2, 2, 0.09, Cycle::Loop, 0, 2),
-        0.7,
-        false,
-    ),
-    AR::Sprite(
         "car",
         "car-sheet.png",
         (170., 100., 3, 4, 0.11, Cycle::Loop, 1, 6),
@@ -121,7 +114,6 @@ const ANIM_RSC: &'static [AR] = &[
 ];
 const ANIM_CUE: &'static [Q] = &[
     Q::Tran("baby", 60., -200., 0.),
-    Q::Tran("rain", 0., 0., 11.),
     Q::Vol("city", 0.),
     Q::Paused("city", false),
     Q::Paused("car_idle", true),
