@@ -86,6 +86,8 @@ const ANIM_RSC: &'static [AR] = &[
     AR::Image("bg", "scenes/intro/bg.png", (0., -35., -10.), 1.),
     AR::Image("pile1", "scenes/intro/pile_1.png", (0., -35., 10.), 1.),
     AR::Image("pile2", "scenes/intro/pile_2.png", (0., -35., 10.), 1.),
+    AR::Image("pile2", "scenes/intro/pile_2.png", (0., -35., 10.), 1.),
+    AR::Image("baby_thrown", "baby-thrown.png", (0., 0., -10.), 0.4),
     AR::Sprite(
         "car",
         "car-sheet.png",
