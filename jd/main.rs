@@ -36,6 +36,19 @@ struct Quit; // custom quit event used to save map before actual AppExit
 #[derive(Resource, Default, Deref)]
 struct TileTypes(Vec<(Color, Collide, Option<(Handle<Image>, (f32, f32), f32)>)>);
 
+#[derive(Component, Clone, Copy)]
+struct TextureAnimate {
+    frame_len: f32,
+    cycle: Cycle,
+    idx_beg: usize,
+    idx_end: usize,
+}
+#[derive(Clone, Copy)]
+enum Cycle {
+    PingPong,
+    Loop,
+}
+
 #[derive(Component, Default)]
 struct DebugUi {
     text: Map<&'static str, String>,
@@ -71,24 +84,24 @@ fn main() {
             Update,
             (check_kbd, check_collide, update_movement, update_camera).chain(),
         )
-        .add_systems(Update, (check_mouse, on_quit))
+        .add_systems(Update, (check_mouse, on_quit, animate_texture))
         .add_systems(PostUpdate, draw_debug)
         .run();
 }
 
 const TILE_SZ: f32 = 50.;
-const MAP: (Vec2, usize, [u8; 8 * 8]) = (
-    Vec2::new(-200., -200.),
-    8,
+const MAP: (Vec2, usize, [u8; 11 * 8]) = (
+    Vec2::new(-200.0, -200.0),
+    11,
     [
-        1, 1, 1, 1, 1, 1, 1, 1, // 1
-        1, 0, 0, 0, 0, 0, 0, 1, // 2
-        1, 0, 0, 0, 0, 0, 0, 1, // 3
-        1, 0, 0, 0, 0, 0, 0, 1, // 4
-        1, 0, 0, 0, 0, 1, 0, 1, // 5
-        1, 0, 0, 0, 0, 0, 0, 1, // 6
-        1, 0, 0, 0, 0, 1, 0, 1, // 7
-        1, 1, 1, 1, 1, 1, 1, 1, // 8
+        1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, // 0
+        1, 0, 0, 0, 0, 0, 0, 1, 3, 0, 0, // 1
+        1, 0, 0, 0, 0, 0, 0, 1, 1, 3, 0, // 2
+        1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 3, // 3
+        1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, // 4
+        1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, // 5
+        1, 0, 0, 0, 0, 1, 0, 2, 0, 0, 0, // 6
+        1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, // 7
     ],
 );
 
@@ -136,6 +149,7 @@ fn setup_graphics(
     assets: Res<AssetServer>,
     mut win: Query<&mut Window, With<PrimaryWindow>>,
     mut tile_types: ResMut<TileTypes>,
+    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
     command.spawn((
         MainCamera,
@@ -162,12 +176,19 @@ fn setup_graphics(
         },
     ));
 
+    // "baby",
+    // "baby-idle-sheet.png",
+    // (251., 377., 3, 2, 0.1, Cycle::PingPong, 0, 4),
+    // 0.5,
+    // false,
+    let layout = TextureAtlasLayout::from_grid(Vec2::new(251., 377.), 3, 2, None, None);
     command.spawn((
         Control,
         Movement::default(),
         SpriteBundle {
             sprite: Sprite {
-                custom_size: Some(Vec2::new(0.8, 1.)),
+                custom_size: Some(Vec2::new(1.2, 1.4)),
+                // rect: Some(Rect::new(0., 0., 251., 350.)),
                 ..default()
             },
             transform: Transform {
@@ -175,8 +196,18 @@ fn setup_graphics(
                 scale: Vec3::new(45., 45., 1.),
                 ..default()
             },
-            texture: assets.load("baby.png"),
+            texture: assets.load("baby-idle-sheet.png"),
             ..default()
+        },
+        TextureAtlas {
+            layout: texture_atlas_layouts.add(layout),
+            index: 0,
+        },
+        TextureAnimate {
+            frame_len: 0.1,
+            cycle: Cycle::PingPong,
+            idx_beg: 0,
+            idx_end: 4,
         },
     ));
 
@@ -499,6 +530,29 @@ fn update_camera(
             cam.translation.x += dx + cam_bound;
         } else {
             cam.translation.x += dx - cam_bound;
+        }
+    }
+}
+
+fn animate_texture(mut tex: Query<(&mut TextureAtlas, &TextureAnimate)>, time: Res<Time>) {
+    for (mut atlas, anim) in &mut tex {
+        let (beg, end) = (anim.idx_beg, anim.idx_end);
+        let len = end + 1 - beg;
+        let n = time.elapsed_seconds() / anim.frame_len;
+        let n = n as usize;
+        match anim.cycle {
+            Cycle::PingPong => {
+                let n = n % (len * 2 - 2);
+                if n < len {
+                    atlas.index = beg + n;
+                } else {
+                    atlas.index = beg + (len - (n - len) - 2);
+                }
+            }
+            Cycle::Loop => {
+                let n = n % len;
+                atlas.index = beg + n;
+            }
         }
     }
 }
