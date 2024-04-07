@@ -83,9 +83,9 @@ enum AR {
     Image(&'static str, &'static str, (f32, f32, f32), f32),
 }
 const ANIM_RSC: &'static [AR] = &[
-    AR::Image("bg", "scenes/intro/bg.png", (0., 0., -10.), 1.),
-    AR::Image("pile1", "scenes/intro/pile_1.png", (0., 0., 10.), 1.),
-    AR::Image("pile2", "scenes/intro/pile_2.png", (0., 0., 10.), 1.),
+    AR::Image("bg", "scenes/intro/bg.png", (0., -35., -10.), 1.),
+    AR::Image("pile1", "scenes/intro/pile_1.png", (0., -35., 10.), 1.),
+    AR::Image("pile2", "scenes/intro/pile_2.png", (0., -35., 10.), 1.),
     AR::Sprite(
         "car",
         "car-sheet.png",
@@ -605,6 +605,7 @@ fn setup(
                 scaling_mode: ScalingMode::FixedVertical(WINDOW_HEIGHT),
                 ..default()
             },
+            transform: Transform::from_translation(CAMERA_ZOOM_IN_START_TR),
             ..default()
         },
         MainCamera {},
