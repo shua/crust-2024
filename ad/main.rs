@@ -523,7 +523,7 @@ fn setup(
             // See: https://bevy-cheatbook.github.io/2d/camera.html#caveat-nearfar-values
             far: 1000.,
             near: -1000.,
-            scaling_mode: ScalingMode::FixedVertical(600.),
+            scaling_mode: ScalingMode::FixedVertical(WINDOW_HEIGHT),
             ..default()
         },
         ..default()
