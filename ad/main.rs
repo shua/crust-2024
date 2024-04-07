@@ -235,6 +235,8 @@ const ANIM_RSC: &'static [AR] = &[
     AR::Sound("car_idle", "sounds/car-idle.wav", false),
     AR::Sound("car_brake", "sounds/car-brake-squeak.wav", true),
     AR::Sound("car_win", "sounds/car-window-open.wav", true),
+    AR::Sound("woosh", "sounds/woosh.wav", true),
+    AR::Sound("thump", "sounds/thump.wav", true),
 ];
 const ANIM_CUE: &'static [Q] = &[
     Q::Tran("baby", 0., -200.),
@@ -244,27 +246,42 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Vol("car_idle", 0.),
     Q::Paused("car_brake", true),
     Q::Paused("car_win", true),
-    //
+    Q::Paused("woosh", true),
+    Q::Paused("thump", true),
+    // background soundscape fades in
     Q::Tick(3.),
-    Q::Vol("city", 1.),
+    Q::Vol("city", 0.8),
+    // scene reveal
     Q::Tick(1.),
     Q::Despawn("screen"),
-    //
+    // car moves into frame, engine sound gets louder
     Q::Tick(2.),
     Q::Tran("car", 700., -50.),
     Q::Paused("car_idle", false),
-    Q::Tick(3.),
-    Q::Vol("car_idle", 0.2),
-    //
-    Q::Tick(1.75),
+    Q::Tick(4.),
+    Q::Vol("car_idle", 0.3),
+    // brake squeak
+    Q::Tick(0.5),
     Q::Paused("car_brake", false),
+    // car stops
     Q::Tick(0.25),
     Q::Tran("car", -50., -150.),
+    // window rolls down
     Q::Tick(1.),
     Q::Paused("car_win", false),
-    //
-    Q::Tick(5.),
     // baby thrown
+    Q::Tick(3.5),
+    Q::Paused("woosh", false),
+    // baby hits ground
+    Q::Tick(1.),
+    Q::Paused("thump", false),
+    // window rolls up ???
+    // car turns around
+    // car burnout
+    // car sound fades
+    // camera slowly zooms in on baby
+    // somber music plays
+    // sudden baby reveal, upbeat wacky music plays
 ];
 
 #[derive(Component, Clone, Copy)]
