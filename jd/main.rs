@@ -1,3 +1,4 @@
+use std::collections::HashMap as Map;
 use std::f32::consts::PI;
 
 use bevy::{
@@ -28,15 +29,19 @@ struct Quit; // custom quit event used to save map before actual AppExit
 #[derive(Resource, Default, Deref)]
 struct TileTypes(Vec<(Color, Handle<Image>, Vec2)>);
 
-#[derive(Resource, Default)]
-struct DebugInfo {
-    text: Vec<TextSection>,
+#[derive(Component, Default)]
+struct DebugUi {
+    text: Map<&'static str, String>,
     collisions: Vec<Aabb2d>,
     ctl_aabb: Option<Aabb2d>,
     cursor: Vec2,
 }
-#[derive(Component)]
-struct DebugUi;
+
+impl DebugUi {
+    fn watch(&mut self, key: &'static str, val: impl std::fmt::Debug) {
+        self.text.insert(key, format!("{:?}", val));
+    }
+}
 #[derive(Component)]
 struct MainCamera;
 
@@ -52,7 +57,6 @@ fn main() {
         }))
         // .add_plugins(bevy_editor_pls::EditorPlugin::new())
         .insert_resource(ClearColor(Color::rgb(0.2, 0.2, 0.2)))
-        .insert_resource(DebugInfo::default())
         .insert_resource(PhysicsTick(0.))
         .insert_resource(TileTypes(vec![default()]))
         .add_event::<Quit>()
@@ -80,28 +84,28 @@ const MAP: (Vec2, usize, [u8; 8 * 8]) = (
 );
 
 impl Tile {
-    fn new_bundle(
+    fn spawn<'c>(
+        commands: &'c mut Commands,
         t: u8,
         pos: Vec3,
         tile_sprites: &TileTypes,
-    ) -> (Collide, Tile, SpriteBundle, ImageScaleMode) {
-        // 300*50 = 3*100*5*10 = 3*10^3*5 = 3*2^3*5^4
+    ) -> bevy::ecs::system::EntityCommands<'c> {
+        let (width, height) = (1500., 1000.);
+        // 1500 = 3*100*5*10 = 3*10^3*5 = 3*2^3*5^4
         // 1000 = 10^3 = 2^3*5^3
         // so should be some denominator of 2^3 * 5^3
         let image_tile_sz = 200.;
-        (
+        let u = (pos.x * image_tile_sz / TILE_SZ).rem_euclid(width);
+        let v = ((-pos.y) * image_tile_sz / TILE_SZ).rem_euclid(height);
+
+        commands.spawn((
             Collide,
             Tile(t),
             SpriteBundle {
                 sprite: Sprite {
                     color: tile_sprites[t as usize].0,
                     custom_size: Some(Vec2::ONE),
-                    rect: Some(Rect::new(
-                        (pos.x * image_tile_sz / TILE_SZ).rem_euclid(1500.),
-                        ((-pos.y) * image_tile_sz / TILE_SZ).rem_euclid(1000.),
-                        (pos.x * image_tile_sz / TILE_SZ).rem_euclid(1500.) + image_tile_sz,
-                        ((-pos.y) * image_tile_sz / TILE_SZ).rem_euclid(1000.) + image_tile_sz,
-                    )),
+                    rect: Some(Rect::new(u, v, u + image_tile_sz, v + image_tile_sz)),
                     ..default()
                 },
                 transform: Transform {
@@ -112,12 +116,7 @@ impl Tile {
                 texture: tile_sprites[t as usize].1.clone(),
                 ..default()
             },
-            ImageScaleMode::Tiled {
-                tile_x: true,
-                tile_y: true,
-                stretch_value: 0.5,
-            },
-        )
+        ))
     }
 }
 
@@ -140,7 +139,7 @@ fn setup_graphics(
         },
     ));
     command.spawn((
-        DebugUi,
+        DebugUi::default(),
         TextBundle {
             style: Style {
                 position_type: PositionType::Absolute,
@@ -186,11 +185,12 @@ fn setup_graphics(
         }
         let (x, y) = (MAP.1 - (i % MAP.1) - 1, i / MAP.1);
         let (x, y) = (x as f32 * TILE_SZ, y as f32 * TILE_SZ);
-        command.spawn(Tile::new_bundle(
+        Tile::spawn(
+            &mut command,
             t,
             map_origin + Vec3::new(x, y, 0.),
             &tile_types,
-        ));
+        );
     }
 
     for mut win in &mut win {
@@ -242,7 +242,7 @@ fn check_mouse(
     )>,
     tile_types: Res<TileTypes>,
     mut commands: Commands,
-    mut dbg: ResMut<DebugInfo>,
+    mut dbg: Query<&mut DebugUi>,
 ) {
     let (cam, cam_trans) = cam.single();
     let Some(cursor) = win.single().cursor_position() else {
@@ -251,6 +251,7 @@ fn check_mouse(
     let Some(cursor) = cam.viewport_to_world_2d(cam_trans, cursor) else {
         return;
     };
+    let mut dbg = dbg.single_mut();
 
     dbg.cursor = cursor;
 
@@ -274,7 +275,7 @@ fn check_mouse(
 
         // no tile, need to insert
         let tile_pos = (cursor / TILE_SZ).round() * TILE_SZ;
-        commands.spawn(Tile::new_bundle(1, tile_pos.extend(0.), &tile_types));
+        Tile::spawn(&mut commands, 1, tile_pos.extend(0.), &tile_types);
     }
 }
 
@@ -287,101 +288,94 @@ fn check_collide(
     mut update_rem: ResMut<PhysicsTick>,
     mut ctl: Query<(Entity, &Transform, &mut Movement, &mut Sprite), With<Control>>,
     col: Query<(Entity, &Transform), With<Collide>>,
-    mut dbg: ResMut<DebugInfo>,
+    mut dbg: Query<&mut DebugUi>,
 ) {
-    for (e, t, mut v, _) in &mut ctl {
-        if v.ctl + v.force == Vec2::ZERO {
-            v.out = Vec2::ZERO;
-            continue;
-        }
+    let (e, t, mut v, _) = ctl.single_mut();
+    if v.ctl + v.force == Vec2::ZERO {
+        v.out = Vec2::ZERO;
+        return;
+    }
 
-        let mut dt = update_rem.0;
-        // 60 physics ticks a second
-        dt += time.delta_seconds() * 60.;
-        let mut aabb = Aabb2d::new(t.translation.xy(), t.scale.xy() / 2.);
-        v.climb = false;
-        let mut collisions = vec![];
-        while dt > 1. {
-            collisions = vec![];
-            v.force += Vec2::new(0., -9.8 / 60.);
-            aabb = Aabb2d::new(aabb.center() + v.ctl.xy() + v.force.xy(), aabb.half_size());
-            for (ec, col) in &col {
-                if ec == e {
-                    continue;
-                }
-
-                let col_aabb = Aabb2d::new(col.translation.xy(), col.scale.xy() / 2.);
-                if aabb.intersects(&col_aabb) {
-                    collisions.push(col_aabb);
-                }
+    let mut dt = update_rem.0;
+    // 60 physics ticks a second
+    dt += time.delta_seconds() * 60.;
+    let mut aabb = Aabb2d::new(t.translation.xy(), t.scale.xy() / 2.);
+    v.climb = false;
+    let mut collisions = vec![];
+    while dt > 1. {
+        collisions = vec![];
+        v.force += Vec2::new(0., -9.8 / 60.);
+        aabb = Aabb2d::new(aabb.center() + v.ctl.xy() + v.force.xy(), aabb.half_size());
+        for (ec, col) in &col {
+            if ec == e {
+                continue;
             }
 
-            // sort bottom-to-top, left-to-right
-            // collisions.sort_by(|c1, c2| {
-            //     (c2.min.y.total_cmp(&c1.min.y)).then(c1.min.x.total_cmp(&c2.min.x))
-            // });
-
-            // sort by distance to aabb
-            collisions.sort_by(|c1, c2| {
-                (c1.center() - aabb.center())
-                    .length_squared()
-                    .total_cmp(&(c2.center() - aabb.center()).length_squared())
-            });
-
-            for col_aabb in &collisions {
-                if !aabb.intersects(col_aabb) {
-                    continue;
-                }
-                let lt = col_aabb.min.x - aabb.max.x;
-                let rt = col_aabb.max.x - aabb.min.x;
-                let up = col_aabb.max.y - aabb.min.y;
-                let dn = col_aabb.min.y - aabb.max.y;
-                let horz = if lt.abs() < rt.abs() { lt } else { rt };
-                let vert = if dn.abs() < up.abs() { dn } else { up };
-                if horz.abs() > vert.abs() {
-                    // uncomment these, and he can no longer walk on ceilings
-                    // if vert.signum() != v.force.y.signum() {
-                    v.force.y = 0.;
-                    // }
-                    if vert < 0. {
-                        v.climb = true;
-                    }
-                    aabb.min.y += vert;
-                    aabb.max.y += vert;
-                } else {
-                    // if push is opposite to the forces applied
-                    // then we've hit a wall, and we cancel the force
-                    if horz.signum() != v.force.x.signum() {
-                        v.force.x = 0.;
-                    }
-                    aabb.min.x += horz;
-                    aabb.max.x += horz;
-                }
+            let col_aabb = Aabb2d::new(col.translation.xy(), col.scale.xy() / 2.);
+            if aabb.intersects(&col_aabb) {
+                collisions.push(col_aabb);
             }
-            dt -= 1.;
-        }
-        if !collisions.is_empty() {
-            dbg.text.clear();
-            dbg.text.push(TextSection::new(
-                format!(
-                    "vctl: {:?}, vforce: {:?}\npos: {:?}\nrot: {:?}, climb: {}",
-                    v.ctl,
-                    v.force,
-                    t.translation,
-                    t.rotation.to_axis_angle(),
-                    v.climb,
-                ),
-                default(),
-            ));
-            dbg.collisions = collisions;
-            dbg.ctl_aabb = Some(aabb);
         }
 
-        let tnew = aabb.center();
-        v.out = tnew - t.translation.xy();
-        if dt != update_rem.0 {
-            update_rem.0 = dt;
+        // sort bottom-to-top, left-to-right
+        // collisions.sort_by(|c1, c2| {
+        //     (c2.min.y.total_cmp(&c1.min.y)).then(c1.min.x.total_cmp(&c2.min.x))
+        // });
+
+        // sort by distance to aabb
+        collisions.sort_by(|c1, c2| {
+            (c1.center() - aabb.center())
+                .length_squared()
+                .total_cmp(&(c2.center() - aabb.center()).length_squared())
+        });
+
+        for col_aabb in &collisions {
+            if !aabb.intersects(col_aabb) {
+                continue;
+            }
+            let lt = col_aabb.min.x - aabb.max.x;
+            let rt = col_aabb.max.x - aabb.min.x;
+            let up = col_aabb.max.y - aabb.min.y;
+            let dn = col_aabb.min.y - aabb.max.y;
+            let horz = if lt.abs() < rt.abs() { lt } else { rt };
+            let vert = if dn.abs() < up.abs() { dn } else { up };
+            if horz.abs() > vert.abs() {
+                // uncomment these, and he can no longer walk on ceilings
+                // if vert.signum() != v.force.y.signum() {
+                v.force.y = 0.;
+                // }
+                if vert < 0. {
+                    v.climb = true;
+                }
+                aabb.min.y += vert;
+                aabb.max.y += vert;
+            } else {
+                // if push is opposite to the forces applied
+                // then we've hit a wall, and we cancel the force
+                if horz.signum() != v.force.x.signum() {
+                    v.force.x = 0.;
+                }
+                aabb.min.x += horz;
+                aabb.max.x += horz;
+            }
         }
+        dt -= 1.;
+    }
+    if !collisions.is_empty() {
+        let mut dbg = dbg.single_mut();
+        dbg.watch("vctl", v.ctl);
+        dbg.watch("vforce", v.force);
+        dbg.watch("pos", t.translation);
+        dbg.watch("rot", t.rotation.to_axis_angle());
+        dbg.watch("climb", v.climb);
+        dbg.collisions = collisions;
+        dbg.ctl_aabb = Some(aabb);
+    }
+
+    let tnew = aabb.center();
+    v.out = tnew - t.translation.xy();
+    if dt != update_rem.0 {
+        update_rem.0 = dt;
     }
 }
 
@@ -409,12 +403,11 @@ fn update_movement(mut movers: Query<(&mut Transform, &Movement, &mut Sprite)>) 
     }
 }
 
-fn draw_debug(dbg: Res<DebugInfo>, mut gizmos: Gizmos, mut ui: Query<&mut Text, With<DebugUi>>) {
-    if dbg.is_changed() && !dbg.text.is_empty() {
-        for mut ui in &mut ui {
-            ui.sections = dbg.text.clone();
-        }
-    }
+fn draw_debug(mut gizmos: Gizmos, mut dbg: Query<(&mut Text, &DebugUi)>) {
+    let (mut txt, dbg) = dbg.single_mut();
+    txt.sections = (dbg.text.iter())
+        .map(|(k, v)| TextSection::new(format!("{k}: {v}\n"), default()))
+        .collect();
     if !dbg.collisions.is_empty() {
         let n = {
             let n = dbg.collisions.len() - 1;
