@@ -209,8 +209,13 @@ enum AR {
         bool,
     ),
     Sound(&'static str, &'static str, bool),
+    Overlay(&'static str, f32),
+    Image(&'static str, &'static str, (f32, f32, f32), f32),
 }
 const ANIM_RSC: &'static [AR] = &[
+    AR::Image("bg", "scenes/intro/bg.png", (0., 0., -10.), 1.),
+    AR::Image("pile1", "scenes/intro/pile_1.png", (0., 0., 10.), 1.),
+    AR::Image("pile2", "scenes/intro/pile_2.png", (0., 0., 10.), 1.),
     AR::Sprite(
         "car",
         "car-sheet.png",
@@ -225,6 +230,7 @@ const ANIM_RSC: &'static [AR] = &[
         0.5,
         false,
     ),
+    AR::Overlay("screen", 100.),
     AR::Sound("city", "sounds/city-background.wav", false),
     AR::Sound("car_idle", "sounds/car-idle.wav", false),
     AR::Sound("car_brake", "sounds/car-brake-squeak.wav", true),
@@ -241,6 +247,8 @@ const ANIM_CUE: &'static [Q] = &[
     //
     Q::Tick(3.),
     Q::Vol("city", 1.),
+    Q::Tick(1.),
+    Q::Despawn("screen"),
     //
     Q::Tick(2.),
     Q::Tran("car", 700., -50.),
@@ -379,6 +387,8 @@ fn setup_anim(
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     mut animations: ResMut<Assets<AnimationClip>>,
     mut sequence: ResMut<CueSequencer>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     let mut pos: Map<&'static str, Vec3> = Map::new();
     for cue in ANIM_CUE.iter() {
@@ -431,6 +441,33 @@ fn setup_anim(
                     },
                 ));
                 entities.insert(name, cmd.id());
+            }
+            &AR::Image(name, tex, (x, y, z), s) => {
+                let cmd = commands.spawn((
+                    Name::new(name),
+                    SpriteBundle {
+                        transform: Transform {
+                            translation: Vec3::new(x, y, z),
+                            scale: Vec3::new(s, s, 1.),
+                            ..default()
+                        },
+                        texture: asset_server.load(tex),
+                        ..default()
+                    },
+                ));
+                entities.insert(Name::new(name), cmd.id());
+            }
+            &AR::Overlay(name, z) => {
+                let cmd = commands.spawn((
+                    Name::new(name),
+                    MaterialMesh2dBundle {
+                        mesh: Mesh2dHandle(meshes.add(Rectangle::new(WINDOW_WIDTH, WINDOW_HEIGHT))),
+                        material: materials.add(Color::BLACK),
+                        transform: Transform::from_xyz(0., 0., z),
+                        ..default()
+                    },
+                ));
+                entities.insert(Name::new(name), cmd.id());
             }
             &AR::Sound(name, snd, once) => {
                 let cmd = commands.spawn((
@@ -610,21 +647,21 @@ fn setup(
     ));
 
     // Scene
-    commands.spawn(SpriteBundle {
-        texture: asset_server.load("scenes/intro/bg.png"),
-        transform: Transform::from_xyz(0., 0., 0.),
-        ..default()
-    });
-    commands.spawn(SpriteBundle {
-        texture: asset_server.load("scenes/intro/pile_1.png"),
-        transform: Transform::from_xyz(0., 0., 10.),
-        ..default()
-    });
-    commands.spawn(SpriteBundle {
-        texture: asset_server.load("scenes/intro/pile_2.png"),
-        transform: Transform::from_xyz(0., 0., 10.),
-        ..default()
-    });
+    // commands.spawn(SpriteBundle {
+    //     texture: asset_server.load("scenes/intro/bg.png"),
+    //     transform: Transform::from_xyz(0., 0., 0.),
+    //     ..default()
+    // });
+    // commands.spawn(SpriteBundle {
+    //     texture: asset_server.load("scenes/intro/pile_1.png"),
+    //     transform: Transform::from_xyz(0., 0., 10.),
+    //     ..default()
+    // });
+    // commands.spawn(SpriteBundle {
+    //     texture: asset_server.load("scenes/intro/pile_2.png"),
+    //     transform: Transform::from_xyz(0., 0., 10.),
+    //     ..default()
+    // });
 
     // Vertical Letterboxes
     let letterbox_h_offset = (WINDOW_WIDTH + LETTERBOX_WIDTH) / 2.;
@@ -643,15 +680,15 @@ fn setup(
     });
 
     // Black Screen
-    commands.spawn((
-        MaterialMesh2dBundle {
-            mesh: Mesh2dHandle(meshes.add(Rectangle::new(WINDOW_WIDTH, WINDOW_HEIGHT))),
-            material: materials.add(Color::BLACK),
-            transform: Transform::from_xyz(0., 0., 100.),
-            ..default()
-        },
-        DespawnTimer(Timer::from_seconds(KEYFRAME_SCENE_REVEAL, TimerMode::Once)),
-    ));
+    // commands.spawn((
+    //     MaterialMesh2dBundle {
+    //         mesh: Mesh2dHandle(meshes.add(Rectangle::new(WINDOW_WIDTH, WINDOW_HEIGHT))),
+    //         material: materials.add(Color::BLACK),
+    //         transform: Transform::from_xyz(0., 0., 100.),
+    //         ..default()
+    //     },
+    //     DespawnTimer(Timer::from_seconds(KEYFRAME_SCENE_REVEAL, TimerMode::Once)),
+    // ));
 
     // spawn_car(
     //     &mut commands,
