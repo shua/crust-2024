@@ -96,7 +96,8 @@ const ANIM_RSC: &'static [AR] = &[
     AR::Sound("city", "sounds/city-background.wav", false),
     AR::Sound("car_idle", "sounds/car-idle.wav", false),
     AR::Sound("car_brake", "sounds/car-brake-squeak.wav", true),
-    AR::Sound("car_win", "sounds/car-window-open.wav", true),
+    AR::Sound("car_win_open", "sounds/car-window-open.wav", true),
+    AR::Sound("car_win_close", "sounds/car-window-close.wav", true),
     AR::Sound("woosh", "sounds/woosh.wav", true),
     AR::Sound("thump", "sounds/thump.wav", true),
 ];
@@ -106,7 +107,8 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Paused("city", false),
     Q::Paused("car_idle", true),
     Q::Paused("car_brake", true),
-    Q::Paused("car_win", true),
+    Q::Paused("car_win_open", true),
+    Q::Paused("car_win_close", true),
     Q::Paused("woosh", true),
     Q::Paused("thump", true),
     // background soundscape fades in
@@ -130,14 +132,16 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Tran("car", -50., -150.),
     // window rolls down
     Q::Tick(1.),
-    Q::Paused("car_win", false),
+    Q::Paused("car_win_open", false),
     // baby thrown
     Q::Tick(3.5),
     Q::Paused("woosh", false),
     // baby hits ground
     Q::Tick(1.),
     Q::Paused("thump", false),
-    // window rolls up ???
+    // window rolls up
+    Q::Tick(1.),
+    Q::Paused("car_win_close", false),
     // car turns around
     // car burnout
     // car sound fades
