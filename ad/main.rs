@@ -58,7 +58,7 @@ enum Q {
     // advance time
     Tick(f32),
     // set translation
-    Tran(&'static str, f32, f32),
+    Tran(&'static str, f32, f32, f32),
     // set rotation (in radians around z-axis)
     Rot(&'static str, f32),
     // set flip x
@@ -87,6 +87,13 @@ const ANIM_RSC: &'static [AR] = &[
     AR::Image("pile1", "scenes/intro/pile_1.png", (0., -35., 10.), 1.),
     AR::Image("pile2", "scenes/intro/pile_2.png", (0., -35., 10.), 1.),
     AR::Sprite(
+        "rain",
+        "rain-sheet.png",
+        (1000., 1000., 2, 2, 0.09, Cycle::Loop, 0, 2),
+        0.7,
+        false,
+    ),
+    AR::Sprite(
         "car",
         "car-sheet.png",
         (170., 100., 3, 4, 0.11, Cycle::Loop, 1, 6),
@@ -111,7 +118,8 @@ const ANIM_RSC: &'static [AR] = &[
     AR::Sound("car_peels_out", "sounds/car-peels-out.wav", true),
 ];
 const ANIM_CUE: &'static [Q] = &[
-    Q::Tran("baby", 60., -200.),
+    Q::Tran("baby", 60., -200., 0.),
+    Q::Tran("rain", 0., 0., 11.),
     Q::Vol("city", 0.),
     Q::Paused("city", false),
     Q::Paused("car_idle", true),
@@ -129,7 +137,7 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Despawn("screen"),
     // car moves into frame, engine sound gets louder
     Q::Tick(2.),
-    Q::Tran("car", 700., -50.),
+    Q::Tran("car", 700., -50., 0.),
     Q::Paused("car_idle", false),
     Q::Vol("car_idle", 0.),
     Q::Tick(4.),
@@ -139,7 +147,7 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Paused("car_brake", false),
     // car stops
     Q::Tick(0.25),
-    Q::Tran("car", -50., -150.),
+    Q::Tran("car", -50., -150., 0.),
     // window rolls down
     Q::Tick(1.),
     Q::Paused("car_win_open", false),
@@ -157,7 +165,7 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Flip("car", false),
     // car burnout
     Q::Tick(1.),
-    Q::Tran("car", -50., -150.),
+    Q::Tran("car", -50., -150., 0.),
     Q::Rot("car", 0.),
     Q::Paused("car_peels_out", false),
     Q::Vol("car_idle", 1.0),
@@ -165,7 +173,7 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Tick(0.2),
     Q::Rot("car", 0.7),
     Q::Tick(1.8),
-    Q::Tran("car", 700., -50.),
+    Q::Tran("car", 700., -50., 0.),
     Q::Vol("car_idle", 0.),
     // somber music plays
     // hold camera for few seconds
@@ -330,9 +338,9 @@ fn setup_anim(
     let mut pos: Map<&'static str, Vec3> = Map::new();
     for cue in ANIM_CUE.iter() {
         match cue {
-            Q::Tran(name, x, y) => {
+            Q::Tran(name, x, y, z) => {
                 if !pos.contains_key(name) {
-                    pos.insert(name, Vec3::new(*x, *y, 0.));
+                    pos.insert(name, Vec3::new(*x, *y, *z));
                 }
             }
             _ => {}
@@ -448,8 +456,8 @@ fn setup_anim(
 
         for cue in ANIM_CUE.iter() {
             match cue {
-                Q::Tran(kname, x, y) if *kname == name.as_str() => {
-                    pos_next = Some(Vec3::new(*x, *y, 0.));
+                Q::Tran(kname, x, y, z) if *kname == name.as_str() => {
+                    pos_next = Some(Vec3::new(*x, *y, *z));
                 }
                 Q::Paused(kname, paused) if *kname == name.as_str() => {
                     paused_next = Some(*paused);
