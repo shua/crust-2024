@@ -55,6 +55,8 @@ enum Q {
     Tick(f32),
     // set translation
     Tran(&'static str, f32, f32),
+    // set rotation (in radians around z-axis)
+    Rot(&'static str, f32),
     // set flip x
     Flip(&'static str, bool),
     // sound paused
@@ -152,10 +154,13 @@ const ANIM_CUE: &'static [Q] = &[
     // car burnout
     Q::Tick(1.),
     Q::Tran("car", -50., -150.),
+    Q::Rot("car", 0.),
     Q::Paused("car_peels_out", false),
     Q::Vol("car_idle", 1.0),
     // car sound fades away
-    Q::Tick(2.),
+    Q::Tick(0.2),
+    Q::Rot("car", 0.7),
+    Q::Tick(1.8),
     Q::Tran("car", 700., -50.),
     Q::Vol("car_idle", 0.),
     // camera slowly zooms in on baby
@@ -416,6 +421,9 @@ fn setup_anim(
         let mut pos_next = None;
         let mut pos_steps = vec![];
         let mut pos_frames = vec![];
+        let mut rot_next = None;
+        let mut rot_steps = vec![];
+        let mut rot_frames = vec![];
 
         let mut paused_next = None;
         let mut vol_next = None;
@@ -440,6 +448,9 @@ fn setup_anim(
                 Q::Despawn(kname) if *kname == name.as_str() => {
                     despawn = Some(t);
                 }
+                Q::Rot(kname, rad) if *kname == name.as_str() => {
+                    rot_next = Some(Quat::from_rotation_z(*rad));
+                }
                 Q::Flip(kname, flip) if *kname == name.as_str() => {
                     flip_next = Some(*flip);
                 }
@@ -447,6 +458,10 @@ fn setup_anim(
                     if let Some(pos_next) = pos_next.take() {
                         pos_frames.push(pos_next);
                         pos_steps.push(t);
+                    }
+                    if let Some(rot) = rot_next.take() {
+                        rot_frames.push(rot);
+                        rot_steps.push(t);
                     }
                     if let Some(vol) = vol_next.take() {
                         vol_cues.push((t, vol));
@@ -467,6 +482,10 @@ fn setup_anim(
             pos_frames.push(pos_next);
             pos_steps.push(t);
         }
+        if let Some(rot) = rot_next {
+            rot_frames.push(rot);
+            rot_steps.push(t);
+        }
 
         if let Some(vol) = vol_next.take() {
             vol_cues.push((t, vol));
@@ -483,18 +502,32 @@ fn setup_anim(
             flip_cues.push((t, flip));
         }
 
-        if !pos_frames.is_empty() {
+        if !(pos_frames.is_empty() && rot_frames.is_empty()) {
             let mut anim = AnimationClip::default();
-            anim.add_curve_to_path(
-                EntityPath {
-                    parts: vec![name.clone()],
-                },
-                VariableCurve {
-                    keyframe_timestamps: pos_steps,
-                    keyframes: Keyframes::Translation(pos_frames),
-                    interpolation: Interpolation::Linear,
-                },
-            );
+            if !pos_frames.is_empty() {
+                anim.add_curve_to_path(
+                    EntityPath {
+                        parts: vec![name.clone()],
+                    },
+                    VariableCurve {
+                        keyframe_timestamps: pos_steps,
+                        keyframes: Keyframes::Translation(pos_frames),
+                        interpolation: Interpolation::Linear,
+                    },
+                );
+            }
+            if !rot_frames.is_empty() {
+                anim.add_curve_to_path(
+                    EntityPath {
+                        parts: vec![name.clone()],
+                    },
+                    VariableCurve {
+                        keyframe_timestamps: rot_steps,
+                        keyframes: Keyframes::Rotation(rot_frames),
+                        interpolation: Interpolation::Linear,
+                    },
+                );
+            }
 
             let mut player = AnimationPlayer::default();
             player.play(animations.add(anim));
