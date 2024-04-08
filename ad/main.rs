@@ -70,6 +70,13 @@ enum Q {
     // despawn
     Despawn(&'static str),
 }
+// Camera cues
+struct CQ {
+    // each field follows (start, end)
+    time: (f32, f32),
+    scale: (f32, f32),
+    tran: (Vec3, Vec3),
+}
 enum AR {
     Sprite(
         &'static str,
@@ -248,13 +255,24 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Tick(1.0),
     Q::Tran("baby", 60., -200., 0.),
 ];
-// TODO: move these to ANIM_CUE
-const CAMERA_ZOOM_IN_START_T: f32 = 29.;
-const CAMERA_ZOOM_IN_END_T: f32 = 60.;
-const CAMERA_ZOOM_IN_START_S: f32 = 1.;
-const CAMERA_ZOOM_IN_END_S: f32 = 0.4;
-const CAMERA_ZOOM_IN_START_TR: Vec3 = Vec3::new(0., 0., 0.);
-const CAMERA_ZOOM_IN_END_TR: Vec3 = Vec3::new(60., -185., 0.);
+const CAM_CUE: &'static [CQ] = &[
+    CQ {
+        time: (20., 60.),
+        scale: (1., 0.4),
+        tran: (Vec3::new(0., 0., 0.), Vec3::new(60., -185., 0.)),
+    },
+    CQ {
+        time: (62., 62.5),
+        scale: (0.4, 0.8),
+        tran: (Vec3::new(60., -185., 0.), Vec3::new(60., -120., 0.)),
+    },
+];
+
+#[derive(Component)]
+struct Bezier(CubicSegment<Vec2>);
+
+#[derive(Component)]
+struct MainCamera;
 
 #[derive(Component, Clone, Copy)]
 struct TextureAnimate {
@@ -369,6 +387,42 @@ fn sequence_cues(
             }
         }
     }
+}
+
+fn sequence_camera(
+    mut camera: Query<(&mut OrthographicProjection, &mut Transform, &Bezier), With<MainCamera>>,
+    time: Res<Time>,
+) {
+    let mut cur_cq: Option<&CQ> = None;
+    for cq in CAM_CUE {
+        let CQ {
+            time: (cq_s, sq_e), ..
+        } = cq;
+        let time = time.elapsed_seconds();
+        if time >= *cq_s && time <= *sq_e {
+            cur_cq = Some(cq);
+        }
+    }
+
+    let Some(CQ {
+        time: (p1_t, p2_t),
+        scale: (p1_s, p2_s),
+        tran: (p1_tr, p2_tr),
+    }) = cur_cq
+    else {
+        return;
+    };
+
+    let t = time.elapsed_seconds();
+    let i = inverse_lerp(*p1_t..=*p2_t, t).unwrap();
+
+    let Ok((mut proj, mut tran, bez)) = camera.get_single_mut() else {
+        return;
+    };
+
+    let ease = bez.0.ease(i);
+    proj.scale = lerp(*p1_s..=*p2_s, ease);
+    tran.translation = p1_tr.lerp(*p2_tr, ease);
 }
 
 fn animate_texture(mut tex: Query<(&mut TextureAtlas, &TextureAnimate)>, time: Res<Time>) {
@@ -632,38 +686,6 @@ fn setup_anim(
     }
 }
 
-#[derive(Component)]
-struct Bezier(CubicSegment<Vec2>);
-
-#[derive(Component)]
-struct MainCamera;
-
-// TODO: Make this part of CueSequencer
-fn sequence_camera(
-    mut camera: Query<(&mut OrthographicProjection, &mut Transform, &Bezier), With<MainCamera>>,
-    time: Res<Time>,
-) {
-    let p1_t = CAMERA_ZOOM_IN_START_T;
-    let p2_t = CAMERA_ZOOM_IN_END_T;
-
-    let p1_s = CAMERA_ZOOM_IN_START_S;
-    let p2_s = CAMERA_ZOOM_IN_END_S;
-
-    let p1_tr = CAMERA_ZOOM_IN_START_TR;
-    let p2_tr = CAMERA_ZOOM_IN_END_TR;
-
-    let t = time.elapsed_seconds();
-    let i = inverse_lerp(p1_t..=p2_t, t).unwrap();
-
-    let Ok((mut proj, mut tran, bez)) = camera.get_single_mut() else {
-        return;
-    };
-
-    let ease = bez.0.ease(i);
-    proj.scale = lerp(p1_s..=p2_s, ease);
-    tran.translation = p1_tr.lerp(p2_tr, ease);
-}
-
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -681,7 +703,7 @@ fn setup(
                 scaling_mode: ScalingMode::FixedVertical(WINDOW_HEIGHT),
                 ..default()
             },
-            transform: Transform::from_translation(CAMERA_ZOOM_IN_START_TR),
+            transform: Transform::from_translation(Vec3::ZERO),
             ..default()
         },
         MainCamera {},
