@@ -789,6 +789,74 @@ fn on_quit(
         println!("  ],");
         println!(");");
 
+        const BMP_SZ: usize = 0x02;
+        const BMP_PX_W: usize = 0x12;
+        const BMP_PX_H: usize = 0x16;
+        const BMP_DATA_SZ: usize = 0x22;
+        const BMP_START_DATA: usize = 0x36;
+        let mut bmp_buf = vec![
+            // BMP Header
+            0x42, 0x4D, // "BM"
+            0x00, 0x00, 0x00, 0x00, // size (todo)
+            0x00, 0x00, // (unused)
+            0x00, 0x00, // (unused)
+            0x36, 0x00, 0x00, 0x00, // offset to pixel array
+            // DIB Header
+            0x28, 0x00, 0x00, 0x00, // size of DIB header
+            0x00, 0x00, 0x00, 0x00, // width of bitmap in pixels (todo)
+            0x00, 0x00, 0x00, 0x00, // height of bitmap in pixels (todo)
+            0x01, 0x00, // # of color planes
+            0x18, 0x00, // # of bits per-pixel (24 bit)
+            0x00, 0x00, 0x00, 0x00, // compression (unused)
+            0x00, 0x00, 0x00, 0x00, // size of bitmap data (todo)
+            0x13, 0x0B, 0x00, 0x00, // print resolution (default)
+            0x13, 0x0B, 0x00, 0x00, // print resolution (default)
+            0x00, 0x00, 0x00, 0x00, // # of colors in palette
+            0x00, 0x00, 0x00, 0x00, // (unused)
+                  // pixel array/bitmap data
+        ];
+        for row in map.iter() {
+            for x in row {
+                match x {
+                    0 => bmp_buf.extend([0x00, 0x00, 0x00]), // black
+                    1 => bmp_buf.extend([0xff, 0xff, 0xff]), // white
+                    2 => bmp_buf.extend([0x00, 0x00, 0xff]), // red
+                    3 => bmp_buf.extend([0xff, 0x00, 0x00]), // blue
+                    4 => bmp_buf.extend([0x00, 0xff, 0x00]), // green
+                    5 => bmp_buf.extend([0x00, 0x88, 0xff]), // orange
+                    _ => unimplemented!(),
+                }
+            }
+            let pad = (row.len() * 3) % 4;
+            if pad != 0 {
+                let pad = 4 - pad;
+                for _ in 0..pad {
+                    bmp_buf.push(0x00);
+                }
+            }
+        }
+        let data_sz = bmp_buf.len() - BMP_START_DATA;
+        let file_sz = bmp_buf.len();
+        let px_w = if (map[0].len() % 4) != 0 {
+            map[0].len() + 4 - (map[0].len() % 4)
+        } else {
+            map[0].len()
+        };
+        let px_h = map.len();
+
+        use std::io::Write as _;
+        for (off, val) in [
+            (BMP_SZ, file_sz),
+            (BMP_PX_W, px_w),
+            (BMP_PX_H, px_h),
+            (BMP_DATA_SZ, data_sz),
+        ] {
+            (&mut bmp_buf[off..])
+                .write(&(val as u32).to_le_bytes())
+                .unwrap();
+        }
+        std::fs::write("./map.bmp", bmp_buf).unwrap();
+
         exit.send(AppExit);
     }
 }
