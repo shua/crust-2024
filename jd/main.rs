@@ -3,6 +3,7 @@ use std::f32::consts::PI;
 
 use bevy::{
     app::AppExit,
+    input::mouse::MouseWheel,
     math::bounding::{Aabb2d, BoundingVolume, IntersectsVolume},
     prelude::*,
     render::camera::ScalingMode,
@@ -52,7 +53,7 @@ enum Cycle {
 #[derive(Component, Default)]
 struct DebugUi {
     text: Map<&'static str, String>,
-    collisions: Vec<Aabb2d>,
+    collisions: Vec<(Collide, Aabb2d)>,
     ctl_aabb: Option<Aabb2d>,
     cursor: Vec2,
 }
@@ -90,18 +91,81 @@ fn main() {
 }
 
 const TILE_SZ: f32 = 50.;
-const MAP: (Vec2, usize, [u8; 11 * 8]) = (
-    Vec2::new(-200.0, -200.0),
-    11,
+const MAP: (Vec2, usize, [u8; 27 * 71]) = (
+    Vec2::new(-200.0, -400.0),
+    27,
     [
-        1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, // 0
-        1, 0, 0, 0, 0, 0, 0, 1, 3, 0, 0, // 1
-        1, 0, 0, 0, 0, 0, 0, 1, 1, 3, 0, // 2
-        1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 3, // 3
-        1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, // 4
-        1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, // 5
-        1, 0, 0, 0, 0, 1, 0, 2, 0, 0, 0, // 6
-        1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, // 7
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 4, 1, 5, 0, 0, 0, 0, 0, // 0
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 1
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 2
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 3
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, // 4
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 5
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 6
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, // 7
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 8
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 9
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, // 10
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 11
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 12
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, // 13
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 14
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 15
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 16
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 17
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, // 18
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 19
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 20
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 21
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 22
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 23
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 24
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 25
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 26
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 27
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 28
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 29
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, // 30
+        0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, // 31
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 32
+        0, 0, 0, 0, 0, 0, 0, 3, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 33
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, // 34
+        0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 35
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 4, 1, 5, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, // 36
+        0, 0, 0, 0, 0, 0, 0, 3, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, // 37
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, // 38
+        1, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, // 39
+        1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 40
+        1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 1, // 41
+        1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 1, // 42
+        1, 0, 0, 0, 0, 0, 1, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 1, // 43
+        1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 44
+        1, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 45
+        3, 0, 0, 0, 0, 0, 4, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 46
+        1, 5, 0, 0, 0, 0, 1, 5, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 47
+        3, 0, 0, 0, 0, 4, 1, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 48
+        1, 5, 0, 0, 0, 0, 1, 0, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 49
+        3, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 50
+        1, 5, 0, 0, 0, 0, 1, 5, 0, 1, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 51
+        1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 52
+        1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 53
+        1, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 54
+        1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 55
+        1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 56
+        1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 57
+        1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 1, // 58
+        1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 1, // 59
+        1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 1, // 60
+        1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, // 61
+        1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, // 62
+        1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, // 63
+        1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, // 64
+        1, 0, 1, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, // 65
+        1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, // 66
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 67
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 68
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 69
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 70
     ],
 );
 
@@ -176,11 +240,6 @@ fn setup_graphics(
         },
     ));
 
-    // "baby",
-    // "baby-idle-sheet.png",
-    // (251., 377., 3, 2, 0.1, Cycle::PingPong, 0, 4),
-    // 0.5,
-    // false,
     let layout = TextureAtlasLayout::from_grid(Vec2::new(251., 377.), 3, 2, None, None);
     command.spawn((
         Control,
@@ -233,6 +292,8 @@ fn setup_graphics(
         ),
         (Color::RED, Collide::StepR, Some(garbage_bg.clone())),
         (Color::BLUE, Collide::StepL, Some(garbage_bg.clone())),
+        (Color::ORANGE, Collide::SlopeR, Some(garbage_bg.clone())),
+        (Color::GREEN, Collide::SlopeL, Some(garbage_bg.clone())),
     ]);
     let map_origin = MAP.0;
     for (i, &t) in MAP.2.iter().rev().enumerate() {
@@ -283,7 +344,7 @@ fn check_kbd(
 fn check_mouse(
     mouse: Res<ButtonInput<MouseButton>>,
     win: Query<&Window, With<PrimaryWindow>>,
-    cam: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
+    mut cam: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
     mut tiles: Query<(
         Entity,
         &Transform,
@@ -294,13 +355,17 @@ fn check_mouse(
     )>,
     tile_types: Res<TileTypes>,
     mut commands: Commands,
+    mut ev_scroll: EventReader<MouseWheel>,
+    mut cam_trans: Query<&mut Transform, (With<Camera>, With<MainCamera>, Without<Tile>)>,
     mut dbg: Query<&mut DebugUi>,
 ) {
-    let (cam, cam_trans) = cam.single();
-    let Some(cursor) = win.single().cursor_position() else {
-        return;
-    };
-    let Some(cursor) = cam.viewport_to_world_2d(cam_trans, cursor) else {
+    let Some(cursor) = ({
+        let (cam, cam_gtrans) = cam.single_mut();
+        let Some(cursor) = win.single().cursor_position() else {
+            return;
+        };
+        cam.viewport_to_world_2d(cam_gtrans, cursor)
+    }) else {
         return;
     };
     let mut dbg = dbg.single_mut();
@@ -315,17 +380,20 @@ fn check_mouse(
                 continue;
             }
 
+            // rotate tile type
             tile.0 = (tile.0 + 1) % (tile_types.len() as u8);
             if tile.0 == 0 {
+                // type 0 is special, it means no tile
                 commands.get_entity(e).unwrap().despawn();
             } else {
-                s.color = tile_types.0[tile.0 as usize].0;
-                if let Some((hndl, _, _)) = &tile_types.0[tile.0 as usize].2 {
+                let (color, collide, tex) = &tile_types.0[tile.0 as usize];
+                s.color = *color;
+                if let Some((hndl, _, _)) = tex {
                     *img = hndl.clone();
                 } else {
                     *img = default();
                 }
-                *col = tile_types.0[tile.0 as usize].1;
+                *col = *collide;
             }
             return;
         }
@@ -334,8 +402,31 @@ fn check_mouse(
         let tile_pos = (cursor / TILE_SZ).round() * TILE_SZ;
         Tile::spawn(&mut commands, 1, tile_pos.extend(0.), &tile_types);
     }
+
+    // zoom the camera using the scroll wheel
+    // or scale the camera by 1.1 to the power of wheel.y
+    let mut zoom = 0.;
+    for ev in ev_scroll.read() {
+        zoom += ev.y;
+    }
+    let mut cam_trans = cam_trans.single_mut();
+    let zoom = (1.1f32).powf(zoom.round());
+    cam_trans.scale *= Vec3::new(zoom, zoom, 1.);
 }
 
+// calculate how much we have to push aabb to no longer collide with col
+// for instance, if aabb is not intersection col_aabb, then we don't need to push it away at all
+// if aabb is intersecting col_aabb, col is square, and it would
+//
+// col determines the shape and characteristics:
+// - square is a square block. standing on this dampens gravity's pull
+// - stepL/R are left or right steps
+//   the collider is the shape of left or right triangles,
+//   and they allow you to stand on them by dampening gravity
+// - slopeL/R are left or right slopes,
+//   the collider is the shape of left or right triangles,
+//   but standing on them does not dampen gravity
+//
 fn collide_push(aabb: &Aabb2d, col: &Collide, col_aabb: &Aabb2d) -> (Vec2, bool, bool) {
     let lt = col_aabb.min.x - aabb.max.x;
     let rt = col_aabb.max.x - aabb.min.x;
@@ -343,6 +434,25 @@ fn collide_push(aabb: &Aabb2d, col: &Collide, col_aabb: &Aabb2d) -> (Vec2, bool,
     let dn = col_aabb.min.y - aabb.max.y;
     let horz = if lt.abs() < rt.abs() { lt } else { rt };
     let vert = if dn.abs() < up.abs() { dn } else { up };
+
+    use std::f32::consts::FRAC_1_SQRT_2;
+    // normalized vectors
+    const UNIT_DN_RT: Vec2 = Vec2::new(FRAC_1_SQRT_2, -FRAC_1_SQRT_2); // y = -x
+    const UNIT_DN_LT: Vec2 = Vec2::new(-FRAC_1_SQRT_2, -FRAC_1_SQRT_2); // y = x
+    let pt_line_dist = |left, p: Vec2| {
+        let a = col_aabb.center();
+        let n = if left { UNIT_DN_RT } else { UNIT_DN_LT };
+        // wikipedia taught me how to do this
+        let dist = (p - a - ((p - a).dot(n) * n)).length();
+        // does point lie above or below the line
+        let sign = if left {
+            (p - a).y > -(p - a).x
+        } else {
+            (p - a).y > (p - a).x
+        };
+        (dist, sign)
+    };
+
     match col {
         Collide::Square => {
             if horz.abs() > vert.abs() {
@@ -352,49 +462,48 @@ fn collide_push(aabb: &Aabb2d, col: &Collide, col_aabb: &Aabb2d) -> (Vec2, bool,
             }
         }
         Collide::StepL | Collide::SlopeL => {
-            // collide like a triangle |\
-            use std::f32::consts::FRAC_1_SQRT_2;
-            let n = Vec2::new(FRAC_1_SQRT_2, -FRAC_1_SQRT_2);
-            let a = col_aabb.center();
-            let p = aabb.min;
-            if (p - a).y > -(p - a).x {
+            // collide like a left triangle |\
+            let (dist, sign) = pt_line_dist(true, aabb.min);
+            if sign {
                 return (Vec2::ZERO, false, false);
             }
-            let dist = (p - a - ((p - a).dot(n) * n)).length();
-            let dampv = matches!(col, Collide::StepL);
-            match (
-                horz.abs() < dist,
-                horz.abs() < vert.abs(),
-                vert.abs() < dist,
-            ) {
-                (true, true, _) => (Vec2::new(horz, 0.), true, false),
-                (_, false, true) => (Vec2::new(0., vert), false, true),
-                _ => (Vec2::new(FRAC_1_SQRT_2, FRAC_1_SQRT_2) * dist, false, dampv),
+            let dampv = matches!(col, Collide::StepL) || vert <= 0.;
+            let (vert_dist, vert_v) = (vert.abs(), (Vec2::new(0., vert), false, dampv));
+            let (horz_dist, horz_v) = (horz.abs(), (Vec2::new(horz, 0.), true, false));
+            let diag_v = (
+                Vec2::new(FRAC_1_SQRT_2, FRAC_1_SQRT_2) * dist,
+                false,
+                matches!(col, Collide::StepL),
+            );
+            if dampv && vert_dist < horz_dist && vert_dist < dist {
+                vert_v
+            } else if horz_dist < dist {
+                horz_v
+            } else {
+                diag_v
             }
         }
         Collide::StepR | Collide::SlopeR => {
-            // collide like a triangel /|
-            use std::f32::consts::FRAC_1_SQRT_2;
-            let n = Vec2::new(-FRAC_1_SQRT_2, -FRAC_1_SQRT_2);
-            let a = col_aabb.center();
+            // collide like a right triangle /|
             let p = Vec2::new(aabb.max.x, aabb.min.y);
-            if (p - a).y > (p - a).x {
+            let (dist, sign) = pt_line_dist(false, p);
+            if sign {
                 return (Vec2::ZERO, false, false);
             }
-            let dist = (p - a - ((p - a).dot(n) * n)).length();
-            let dampv = matches!(col, Collide::StepR);
-            match (
-                horz.abs() < dist,
-                horz.abs() < vert.abs(),
-                vert.abs() < dist,
-            ) {
-                (true, true, _) => (Vec2::new(horz, 0.), true, false),
-                (_, false, true) => (Vec2::new(0., vert), false, true),
-                _ => (
-                    Vec2::new(-FRAC_1_SQRT_2, FRAC_1_SQRT_2) * dist,
-                    false,
-                    dampv,
-                ),
+            let dampv = matches!(col, Collide::StepR) || vert <= 0.;
+            let (vert_dist, vert_v) = (vert.abs(), (Vec2::new(0., vert), false, dampv));
+            let (horz_dist, horz_v) = (horz.abs(), (Vec2::new(horz, 0.), true, false));
+            let diag_v = (
+                Vec2::new(-FRAC_1_SQRT_2, FRAC_1_SQRT_2) * dist,
+                false,
+                matches!(col, Collide::StepR),
+            );
+            if dampv && vert_dist < horz_dist && vert_dist < dist {
+                vert_v
+            } else if horz_dist < dist {
+                horz_v
+            } else {
+                diag_v
             }
         }
     }
@@ -423,6 +532,7 @@ fn check_collide(
     let mut aabb = Aabb2d::new(t.translation.xy(), t.scale.xy() / 2.);
     v.climb = false;
     let mut collisions = vec![];
+    let mut pushes = vec![];
     while dt > 1. {
         collisions = vec![];
         v.force += Vec2::new(0., -9.8 / 60.);
@@ -446,28 +556,39 @@ fn check_collide(
         // sort by distance to aabb
         collisions.sort_by(|c1, c2| c1.0.total_cmp(&c2.0));
 
-        for (_, col, col_aabb) in &collisions {
-            if !aabb.intersects(col_aabb) {
-                continue;
-            }
-            let (push, damph, dampv) = collide_push(&aabb, col, col_aabb);
-            if push == Vec2::ZERO {
-                continue;
-            }
+        // three tries outta be enough
+        for i in 0..3 {
+            let mut pushed = false;
+            for (_, col, col_aabb) in &collisions {
+                if !aabb.intersects(col_aabb) {
+                    continue;
+                }
+                let (push, damph, dampv) = collide_push(&aabb, col, col_aabb);
+                if push == Vec2::ZERO {
+                    continue;
+                }
+                println!("{col:?} {col_aabb:?}");
+                println!("{push:?} {damph} {dampv}");
+                pushes.push((i, *col, push, damph, dampv));
 
-            if dampv {
-                if v.ctl.y > 0. && push.y < 0. {
-                    v.climb = true;
+                if dampv {
+                    if v.ctl.y > 0. && push.y < 0. {
+                        v.climb = true;
+                    }
+                    v.force.y = 0.;
                 }
-                v.force.y = 0.;
-            }
-            if damph {
-                if push.x.signum() != v.force.x.signum() {
-                    v.force.x = 0.;
+                if damph {
+                    if push.x.signum() != v.force.x.signum() {
+                        v.force.x = 0.;
+                    }
                 }
+                aabb.min += push;
+                aabb.max += push;
+                pushed = true;
             }
-            aabb.min += push;
-            aabb.max += push;
+            if !pushed {
+                break;
+            }
         }
         dt -= 1.;
     }
@@ -478,7 +599,11 @@ fn check_collide(
         dbg.watch("pos", t.translation);
         dbg.watch("rot", t.rotation.to_axis_angle());
         dbg.watch("climb", v.climb);
-        dbg.collisions = collisions.into_iter().map(|(_, _, c)| c).collect();
+        dbg.watch("pushes", pushes);
+        dbg.collisions = collisions
+            .into_iter()
+            .map(|(_, c, aabb)| (c, aabb))
+            .collect();
         dbg.ctl_aabb = Some(aabb);
     }
 
@@ -532,6 +657,14 @@ fn update_camera(
             cam.translation.x += dx - cam_bound;
         }
     }
+    if (ctl.y - cam.translation.y).abs() > cam_bound {
+        let dy = ctl.y - cam.translation.y;
+        if dy < 0. {
+            cam.translation.y += dy + cam_bound;
+        } else {
+            cam.translation.y += dy - cam_bound;
+        }
+    }
 }
 
 fn animate_texture(mut tex: Query<(&mut TextureAtlas, &TextureAnimate)>, time: Res<Time>) {
@@ -571,13 +704,35 @@ fn draw_debug(mut gizmos: Gizmos, mut dbg: Query<(&mut Text, &DebugUi)>) {
                 0.5 / n as f32
             }
         };
-        for (i, aabb) in dbg.collisions.iter().enumerate() {
-            gizmos.rect_2d(
-                aabb.center(),
-                0.,
-                aabb.half_size() * 2.,
-                Color::rgb(1. - (i as f32 * n), 0., 0.),
-            );
+        for (i, (col, aabb)) in dbg.collisions.iter().enumerate() {
+            let color = Color::rgb(1. - (i as f32 * n), 0., 0.);
+            match col {
+                Collide::Square => {
+                    gizmos.rect_2d(aabb.center(), 0., aabb.max - aabb.min, color);
+                }
+                Collide::StepL | Collide::SlopeL => {
+                    gizmos.linestrip_2d(
+                        [
+                            aabb.min,
+                            Vec2::new(aabb.max.x, aabb.min.y),
+                            Vec2::new(aabb.min.x, aabb.max.y),
+                            aabb.min,
+                        ],
+                        color,
+                    );
+                }
+                Collide::StepR | Collide::SlopeR => {
+                    gizmos.linestrip_2d(
+                        [
+                            aabb.min,
+                            Vec2::new(aabb.max.x, aabb.min.y),
+                            aabb.max,
+                            aabb.min,
+                        ],
+                        color,
+                    );
+                }
+            }
             // gizmos.ray_2d(*origin, *ray, Color::GREEN);
         }
         if let Some(aabb) = &dbg.ctl_aabb {
@@ -624,7 +779,7 @@ fn on_quit(
             let trans = (trans - min) / TILE_SZ;
             map[trans.y as usize][trans.x as usize] = tile.0;
         }
-        for (y, row) in map.into_iter().rev().enumerate() {
+        for (y, row) in map.iter().rev().enumerate() {
             print!("    ");
             for t in row {
                 print!("{t}, ");
