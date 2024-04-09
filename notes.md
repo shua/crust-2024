@@ -18,7 +18,11 @@ baby movement hopping?
 game starts off at night but ends at dawn/morning
 
 -- sad trash baby song --
+a              E7
 biedne samotne dziecię
+E7         a
 urodzone w lecie
+F            a
 porzucone na śmiecie
+E7             a
 rodzice go nie chcieli

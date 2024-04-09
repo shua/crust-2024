@@ -83,7 +83,7 @@ fn main() {
         .add_systems(Startup, setup_graphics)
         .add_systems(
             Update,
-            (check_kbd, check_collide, update_movement, update_camera).chain(),
+            (check_kbd, check_collide, update_movement, pan_camera).chain(),
         )
         .add_systems(Update, (check_mouse, on_quit, animate_texture))
         .add_systems(PostUpdate, draw_debug)
@@ -91,7 +91,7 @@ fn main() {
 }
 
 const TILE_SZ: f32 = 50.;
-const MAP: (Vec2, usize, [u8; 27 * 71]) = (
+const MAP: (Vec2, usize, [u8; 27 * 70]) = (
     Vec2::new(-200.0, -400.0),
     27,
     [
@@ -165,7 +165,6 @@ const MAP: (Vec2, usize, [u8; 27 * 71]) = (
         1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 67
         1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 68
         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 69
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 70
     ],
 );
 
@@ -419,11 +418,11 @@ fn check_mouse(
 // if aabb is intersecting col_aabb, col is square, and it would
 //
 // col determines the shape and characteristics:
-// - square is a square block. standing on this dampens gravity's pull
-// - stepL/R are left or right steps
+// - Square is a square block. standing on this dampens gravity's pull
+// - StepL/R are left or right steps
 //   the collider is the shape of left or right triangles,
 //   and they allow you to stand on them by dampening gravity
-// - slopeL/R are left or right slopes,
+// - SlopeL/R are left or right slopes,
 //   the collider is the shape of left or right triangles,
 //   but standing on them does not dampen gravity
 //
@@ -548,11 +547,6 @@ fn check_collide(
             }
         }
 
-        // sort bottom-to-top, left-to-right
-        // collisions.sort_by(|c1, c2| {
-        //     (c2.min.y.total_cmp(&c1.min.y)).then(c1.min.x.total_cmp(&c2.min.x))
-        // });
-
         // sort by distance to aabb
         collisions.sort_by(|c1, c2| c1.0.total_cmp(&c2.0));
 
@@ -638,16 +632,14 @@ fn update_movement(mut movers: Query<(&mut Transform, &Movement, &mut Sprite)>) 
     }
 }
 
-fn update_camera(
-    mut trans: Query<&mut Transform>,
-    cam: Query<Entity, With<Camera>>,
-    ctl: Query<Entity, With<Control>>,
+fn pan_camera(
+    mut cam: Query<&mut Transform, (With<Camera>, Without<Control>)>,
+    ctl: Query<&Transform, With<Control>>,
 ) {
-    let ctl = ctl.single();
-    let ctl = trans.get(ctl).unwrap().translation;
-
-    let cam = cam.single();
-    let mut cam = trans.get_mut(cam).unwrap();
+    // move the camera to track the player when he gets too close to the edge of the window
+    let ctl = ctl.single().translation;
+    let mut cam = cam.single_mut();
+    // hardcoded 100x100 pixel box
     let cam_bound = 100.;
     if (ctl.x - cam.translation.x).abs() > cam_bound {
         let dx = ctl.x - cam.translation.x;

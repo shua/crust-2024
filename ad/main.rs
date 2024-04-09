@@ -111,6 +111,8 @@ const ANIM_RSC: &'static [AR] = &[
     ),
     AR::Overlay("screen", 100.),
     AR::Sound("city", "sounds/city-background.wav", false),
+    AR::Sound("sad_song", "sounds/biedne-dziecie.wav", true),
+    AR::Sound("sad_song_jazz", "sounds/biedne-dziecie-jazz.wav", true),
     AR::Sound("car_idle", "sounds/car-idle.wav", false),
     AR::Sound("car_brake", "sounds/car-brake-squeak.wav", true),
     AR::Sound("car_win_open", "sounds/car-window-open.wav", true),
@@ -123,6 +125,8 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Tran("baby", 60., -200., -10.),
     Q::Vol("city", 0.),
     Q::Paused("city", false),
+    Q::Paused("sad_song", true),
+    Q::Paused("sad_song_jazz", true),
     Q::Paused("car_idle", true),
     Q::Paused("car_brake", true),
     Q::Paused("car_win_open", true),
@@ -152,6 +156,7 @@ const ANIM_CUE: &'static [Q] = &[
     // window rolls down
     Q::Tick(1.),
     Q::Paused("car_win_open", false),
+    Q::Paused("sad_song_jazz", false),
     // baby thrown
     Q::Tick(3.5),
     Q::Tran("baby_thrown", -30., -100., -10.),
@@ -180,10 +185,12 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Tran("car", 700., -50., 0.),
     Q::Vol("car_idle", 0.),
     // somber music plays
+    // Q::Paused("sad_song", false),
     // hold camera for few seconds
     // camera slowly zooms in on baby
     // baby wriggles on ground
-    Q::Tick(5.0),
+    // Q::Tick(1.0), // for sad_song
+    Q::Tick(7.0), // for sad_song_jazz
     Q::Rot("baby_thrown", 1.6),
     Q::Tick(0.6),
     Q::Rot("baby_thrown", 1.4),
@@ -253,6 +260,7 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Tran("baby", 60., -200., -10.),
     Q::Despawn("baby_thrown"),
     Q::Tick(1.0),
+    Q::Paused("sad_song_jazz", true),
     Q::Tran("baby", 60., -200., 0.),
 ];
 const CAM_CUE: &'static [CQ] = &[
@@ -373,6 +381,8 @@ fn sequence_cues(
                 sink.set_volume(vol);
                 if sink.is_paused() && !paused {
                     sink.play();
+                } else if !sink.is_paused() && paused {
+                    sink.pause();
                 }
             }
         }
