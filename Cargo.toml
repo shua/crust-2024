@@ -28,3 +28,7 @@ path = "jd/main.rs"
 [[bin]]
 name = "ad"
 path = "ad/main.rs"
+
+[[bin]]
+name = "baby"
+path = "baby/main.rs"
