@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy_embedded_assets::{EmbeddedAssetPlugin, PluginMode};
 
 const WINDOW_WIDTH: f32 = 800.;
 const WINDOW_HEIGHT: f32 = 600.;
@@ -16,6 +17,9 @@ enum AppState {
 
 fn main() {
     App::new()
+        .add_plugins(EmbeddedAssetPlugin {
+            mode: PluginMode::ReplaceDefault,
+        })
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Baby".into(),
