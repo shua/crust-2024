@@ -6,6 +6,7 @@ const WINDOW_HEIGHT: f32 = 600.;
 const PILLARBOX_WIDTH: f32 = 2000.;
 
 mod intro;
+mod level;
 
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash)]
 enum AppState {

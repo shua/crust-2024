@@ -23,7 +23,7 @@ embed-resource = "1.6.3"
 
 [[bin]]
 name = "jd"
-path = "jd/main.rs"
+path = "baby/jd.rs"
 
 [[bin]]
 name = "ad"

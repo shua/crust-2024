@@ -11,9 +11,9 @@ use bevy::{
 };
 
 #[derive(Component)]
-struct Control;
+pub struct Control;
 #[derive(Component, Clone, Copy, Default, Debug)]
-enum Collide {
+pub enum Collide {
     #[default]
     Square,
     StepL,
@@ -22,36 +22,36 @@ enum Collide {
     SlopeR,
 }
 #[derive(Resource)]
-struct PhysicsTick(f32);
+pub struct PhysicsTick(pub f32);
 #[derive(Component, Default)]
-struct Movement {
-    ctl: Vec2,
-    force: Vec2,
-    out: Vec2,
-    climb: bool,
+pub struct Movement {
+    pub ctl: Vec2,
+    pub force: Vec2,
+    pub out: Vec2,
+    pub climb: bool,
 }
 #[derive(Component, Deref, DerefMut, Clone, Copy, Debug)]
-struct Tile(u8);
+pub struct Tile(pub u8);
 #[derive(Event)]
-struct Quit; // custom quit event used to save map before actual AppExit
+pub struct Quit; // custom quit event used to save map before actual AppExit
 #[derive(Resource, Default, Deref)]
-struct TileTypes(Vec<(Color, Collide, Option<(Handle<Image>, (f32, f32), f32)>)>);
+pub struct TileTypes(pub Vec<(Color, Collide, Option<(Handle<Image>, (f32, f32), f32)>)>);
 
 #[derive(Component, Clone, Copy)]
-struct TextureAnimate {
-    frame_len: f32,
-    cycle: Cycle,
-    idx_beg: usize,
-    idx_end: usize,
+pub struct TextureAnimate {
+    pub frame_len: f32,
+    pub cycle: Cycle,
+    pub idx_beg: usize,
+    pub idx_end: usize,
 }
 #[derive(Clone, Copy)]
-enum Cycle {
+pub enum Cycle {
     PingPong,
     Loop,
 }
 
 #[derive(Component, Default)]
-struct DebugUi {
+pub struct DebugUi {
     text: Map<&'static str, String>,
     collisions: Vec<(Collide, Aabb2d)>,
     ctl_aabb: Option<Aabb2d>,
@@ -64,31 +64,7 @@ impl DebugUi {
     }
 }
 #[derive(Component)]
-struct MainCamera;
-
-fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Baby".into(),
-                resolution: (800., 600.).into(),
-                ..default()
-            }),
-            ..default()
-        }))
-        .insert_resource(ClearColor(Color::rgb(0.2, 0.2, 0.2)))
-        .insert_resource(PhysicsTick(0.))
-        .insert_resource(TileTypes(vec![default()]))
-        .add_event::<Quit>()
-        .add_systems(Startup, setup_graphics)
-        .add_systems(
-            Update,
-            (check_kbd, check_collide, update_movement, update_camera).chain(),
-        )
-        .add_systems(Update, (check_mouse, on_quit, animate_texture))
-        .add_systems(PostUpdate, draw_debug)
-        .run();
-}
+pub struct MainCamera;
 
 const TILE_SZ: f32 = 50.;
 const MAP: (Vec2, usize, [u8; 27 * 71]) = (
@@ -208,7 +184,12 @@ impl Tile {
     }
 }
 
-fn setup_graphics(
+pub fn setup(mut command: Commands) {
+    command.insert_resource(PhysicsTick(0.));
+    command.insert_resource(TileTypes(vec![default()]));
+}
+
+pub fn setup_graphics(
     mut command: Commands,
     assets: Res<AssetServer>,
     mut win: Query<&mut Window, With<PrimaryWindow>>,
@@ -311,7 +292,7 @@ fn setup_graphics(
     }
 }
 
-fn check_kbd(
+pub fn check_kbd(
     kbd: Res<ButtonInput<KeyCode>>,
     mut quit: EventWriter<Quit>,
     mut ctl: Query<&mut Movement, With<Control>>,
@@ -341,7 +322,7 @@ fn check_kbd(
     }
 }
 
-fn check_mouse(
+pub fn check_mouse(
     mouse: Res<ButtonInput<MouseButton>>,
     win: Query<&Window, With<PrimaryWindow>>,
     mut cam: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
@@ -513,7 +494,7 @@ fn collide_push(aabb: &Aabb2d, col: &Collide, col_aabb: &Aabb2d) -> (Vec2, bool,
 // if there are any collisions, then reduce velocity until there aren't
 //
 // this is not working correctly as it sees collisions where it shouldn't
-fn check_collide(
+pub fn check_collide(
     time: Res<Time>,
     mut update_rem: ResMut<PhysicsTick>,
     mut ctl: Query<(&Transform, &mut Movement), With<Control>>,
@@ -614,7 +595,7 @@ fn check_collide(
     }
 }
 
-fn update_movement(mut movers: Query<(&mut Transform, &Movement, &mut Sprite)>) {
+pub fn update_movement(mut movers: Query<(&mut Transform, &Movement, &mut Sprite)>) {
     for (mut t, v, mut s) in &mut movers {
         t.translation.x += v.out.x;
         t.translation.y += v.out.y;
@@ -638,7 +619,7 @@ fn update_movement(mut movers: Query<(&mut Transform, &Movement, &mut Sprite)>) 
     }
 }
 
-fn update_camera(
+pub fn update_camera(
     mut trans: Query<&mut Transform>,
     cam: Query<Entity, With<Camera>>,
     ctl: Query<Entity, With<Control>>,
@@ -667,7 +648,7 @@ fn update_camera(
     }
 }
 
-fn animate_texture(mut tex: Query<(&mut TextureAtlas, &TextureAnimate)>, time: Res<Time>) {
+pub fn animate_texture(mut tex: Query<(&mut TextureAtlas, &TextureAnimate)>, time: Res<Time>) {
     for (mut atlas, anim) in &mut tex {
         let (beg, end) = (anim.idx_beg, anim.idx_end);
         let len = end + 1 - beg;
@@ -690,7 +671,7 @@ fn animate_texture(mut tex: Query<(&mut TextureAtlas, &TextureAnimate)>, time: R
     }
 }
 
-fn draw_debug(mut gizmos: Gizmos, mut dbg: Query<(&mut Text, &DebugUi)>) {
+pub fn draw_debug(mut gizmos: Gizmos, mut dbg: Query<(&mut Text, &DebugUi)>) {
     let (mut txt, dbg) = dbg.single_mut();
     txt.sections = (dbg.text.iter())
         .map(|(k, v)| TextSection::new(format!("{k}: {v}\n"), default()))
@@ -743,7 +724,7 @@ fn draw_debug(mut gizmos: Gizmos, mut dbg: Query<(&mut Text, &DebugUi)>) {
     gizmos.rect_2d(cursor, 0., Vec2::new(TILE_SZ, TILE_SZ), Color::GREEN);
 }
 
-fn on_quit(
+pub fn on_quit(
     quit: EventReader<Quit>,
     tiles: Query<(&Transform, &Tile), With<Tile>>,
     mut exit: EventWriter<AppExit>,
