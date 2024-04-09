@@ -22,10 +22,6 @@ bevy_editor_pls = "0.8.1"
 embed-resource = "1.6.3"
 
 [[bin]]
-name = "jd"
-path = "jd/main.rs"
-
-[[bin]]
 name = "ad"
 path = "ad/main.rs"
 
