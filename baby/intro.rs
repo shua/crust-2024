@@ -4,7 +4,6 @@ use bevy::{
     render::camera::ScalingMode,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
 };
-use bevy_editor_pls::egui::{emath::inverse_lerp, lerp};
 use std::collections::HashMap as Map;
 
 #[derive(Component, Default)]
@@ -734,4 +733,20 @@ pub fn setup(
 
 pub fn cleanup() {
     println!("cleaning up intro");
+}
+
+fn inverse_lerp(r: std::ops::RangeInclusive<f32>, v: f32) -> Option<f32> {
+    if !r.contains(&v) {
+        return None;
+    }
+    Some((v - *r.start()) / (*r.end() - *r.start()))
+}
+fn lerp(r: std::ops::RangeInclusive<f32>, t: f32) -> f32 {
+    if t < 0. {
+        *r.start()
+    } else if t > 1. {
+        *r.end()
+    } else {
+        *r.start() + t * (*r.end() - *r.start())
+    }
 }
