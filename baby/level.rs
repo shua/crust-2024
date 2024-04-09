@@ -276,8 +276,6 @@ pub fn setup(
         },
     ));
 
-    if cfg!(debug_assertions) {}
-
     let layout = TextureAtlasLayout::from_grid(Vec2::new(251., 377.), 3, 2, None, None);
     command.spawn((
         Control,

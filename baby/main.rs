@@ -33,6 +33,7 @@ fn main() {
         .add_systems(
             Update,
             (
+                intro::check_kbd,
                 intro::sequence_cues,
                 intro::sequence_camera,
                 intro::animate_texture,
