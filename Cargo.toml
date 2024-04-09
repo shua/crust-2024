@@ -17,6 +17,10 @@ bevy = { version = "0.13.1", features = ["wav", "dynamic_linking"] }
 # bevy_rapier2d = "0.18.0"
 bevy_editor_pls = "0.8.1"
 
+# for embedding icons into windows exe's
+[build-dependencies]
+embed-resource = "1.6.3"
+
 [[bin]]
 name = "jd"
 path = "jd/main.rs"
