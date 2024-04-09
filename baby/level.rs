@@ -12,15 +12,6 @@ use bevy::{
 
 #[derive(Component)]
 pub struct Control;
-#[derive(Component, Clone, Copy, Default, Debug)]
-pub enum Collide {
-    #[default]
-    Square,
-    StepL,
-    StepR,
-    SlopeL,
-    SlopeR,
-}
 #[derive(Resource)]
 pub struct PhysicsTick(pub f32);
 #[derive(Component, Default)]
@@ -30,12 +21,24 @@ pub struct Movement {
     out: Vec2,
     climb: bool,
 }
-#[derive(Component, Deref, DerefMut, Clone, Copy, Debug)]
+#[derive(Component, Deref, DerefMut, Clone, Copy, Debug, PartialEq)]
 pub struct Tile(u8);
 #[derive(Event)]
 pub struct Quit; // custom quit event used to save map before actual AppExit
-#[derive(Resource, Default, Deref)]
-pub struct TileTypes(pub Vec<(Color, Collide, Option<(Handle<Image>, (f32, f32), f32)>)>);
+
+const TILE_TYPES: [Color; 6] = [
+    Color::NONE,
+    Color::WHITE,
+    Color::RED,
+    Color::BLUE,
+    Color::ORANGE,
+    Color::GREEN,
+];
+const TILE_SQUARE: Tile = Tile(1);
+const TILE_STEPR: Tile = Tile(2);
+const TILE_STEPL: Tile = Tile(3);
+const TILE_SLOPER: Tile = Tile(4);
+const TILE_SLOPEL: Tile = Tile(5);
 
 use crate::intro::Cycle;
 use crate::intro::TextureAnimate;
@@ -57,7 +60,7 @@ impl Plugin for DebugGamePlugin {
 #[derive(Component, Default)]
 pub struct DebugUi {
     text: Map<&'static str, String>,
-    collisions: Vec<(Collide, Aabb2d)>,
+    collisions: Vec<(Tile, Aabb2d)>,
     ctl_aabb: Option<Aabb2d>,
     cursor: Vec2,
 }
@@ -67,15 +70,15 @@ impl DebugUi {
         self.text.insert(key, format!("{:?}", val));
     }
 }
-#[derive(Component)]
-pub struct MainCamera;
+
+use crate::intro::MainCamera;
 
 const TILE_SZ: f32 = 50.;
 const MAP: (Vec2, usize, [u8; 27 * 112]) = (
     Vec2::new(-200.0, -400.0),
     27,
     [
-        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 1, // 0
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, // 0
         1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 1
         1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 2
         1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 1, // 3
@@ -207,20 +210,16 @@ impl Tile {
         commands: &'c mut Commands,
         t: u8,
         pos: Vec3,
-        tile_types: &TileTypes,
+        tex_cfg: (Handle<Image>, (f32, f32), f32),
     ) -> bevy::ecs::system::EntityCommands<'c> {
-        let &(color, collide, ref tex_cfg) = &tile_types[t as usize];
-        let mut rect = None;
-        let mut tex = default();
-        if let &Some((ref hndl, (w, h), s)) = tex_cfg {
-            let u = (pos.x * s / TILE_SZ).rem_euclid(w);
-            let v = ((-pos.y) * s / TILE_SZ).rem_euclid(h);
-            rect = Some(Rect::new(u, v, u + s, v + s));
-            tex = hndl.clone();
-        }
+        let color = TILE_TYPES[t as usize];
+        let (hndl, (w, h), s) = tex_cfg;
+        let u = (pos.x * s / TILE_SZ).rem_euclid(w);
+        let v = ((-pos.y) * s / TILE_SZ).rem_euclid(h);
+        let rect = Some(Rect::new(u, v, u + s, v + s));
+        let tex = hndl.clone();
 
         commands.spawn((
-            collide,
             Tile(t),
             SpriteBundle {
                 sprite: Sprite {
@@ -260,7 +259,6 @@ pub fn setup(
     mut command: Commands,
     assets: Res<AssetServer>,
     mut win: Query<&mut Window, With<PrimaryWindow>>,
-    mut tile_types: ResMut<TileTypes>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
     command.spawn((
@@ -320,18 +318,6 @@ pub fn setup(
         texture: garbage_bg.0.clone(),
         ..default()
     });
-    tile_types.0.extend([
-        (
-            Color::rgb(0.5, 0.5, 1.0),
-            Collide::Square,
-            Some(garbage_bg.clone()),
-        ),
-        (Color::RED, Collide::StepR, Some(garbage_bg.clone())),
-        (Color::BLUE, Collide::StepL, Some(garbage_bg.clone())),
-        (Color::ORANGE, Collide::SlopeR, Some(garbage_bg.clone())),
-        (Color::GREEN, Collide::SlopeL, Some(garbage_bg.clone())),
-        (Color::YELLOW, Collide::Square, None),
-    ]);
     let map_origin = MAP.0;
     for (i, &t) in MAP.2.iter().rev().enumerate() {
         if t == 0 {
@@ -339,7 +325,12 @@ pub fn setup(
         }
         let (x, y) = (MAP.1 - (i % MAP.1) - 1, i / MAP.1);
         let v = Vec2::new(x as f32, y as f32) * Vec2::splat(TILE_SZ);
-        Tile::spawn(&mut command, t, (map_origin + v).extend(0.), &tile_types);
+        Tile::spawn(
+            &mut command,
+            t,
+            (map_origin + v).extend(0.),
+            garbage_bg.clone(),
+        );
     }
 
     for mut win in &mut win {
@@ -392,9 +383,7 @@ pub fn debug_check_mouse(
         &mut Tile,
         &mut Sprite,
         &mut Handle<Image>,
-        &mut Collide,
     )>,
-    tile_types: Res<TileTypes>,
     mut commands: Commands,
     mut ev_scroll: EventReader<MouseWheel>,
     mut cam_trans: Query<&mut Transform, (With<Camera>, With<MainCamera>, Without<Tile>)>,
@@ -415,33 +404,32 @@ pub fn debug_check_mouse(
 
     if mouse.just_pressed(MouseButton::Left) {
         let cursor_pt = Aabb2d::new(cursor, Vec2::ZERO);
-        for (e, trans, mut tile, mut s, mut img, mut col) in &mut tiles {
+        for (e, trans, mut tile, mut s, _img) in &mut tiles {
             let tile_box = Aabb2d::new(trans.translation.xy(), trans.scale.xy() / 2.);
             if !tile_box.contains(&cursor_pt) {
                 continue;
             }
 
             // rotate tile type
-            tile.0 = (tile.0 + 1) % (tile_types.len() as u8);
+            tile.0 = (tile.0 + 1) % (TILE_TYPES.len() as u8);
             if tile.0 == 0 {
                 // type 0 is special, it means no tile
                 commands.get_entity(e).unwrap().despawn();
             } else {
-                let (color, collide, tex) = &tile_types.0[tile.0 as usize];
-                s.color = *color;
-                if let Some((hndl, _, _)) = tex {
-                    *img = hndl.clone();
-                } else {
-                    *img = default();
-                }
-                *col = *collide;
+                let color = TILE_TYPES[tile.0 as usize];
+                s.color = color;
             }
             return;
         }
 
         // no tile, need to insert
         let tile_pos = (cursor / TILE_SZ).round() * TILE_SZ;
-        Tile::spawn(&mut commands, 1, tile_pos.extend(0.), &tile_types);
+        Tile::spawn(
+            &mut commands,
+            1,
+            tile_pos.extend(0.),
+            (Handle::default(), (1500., 1000.), 200.),
+        );
     }
 
     // zoom the camera using the scroll wheel
@@ -468,7 +456,7 @@ pub fn debug_check_mouse(
 //   the collider is the shape of left or right triangles,
 //   but standing on them does not dampen gravity
 //
-fn collide_push(aabb: &Aabb2d, col: &Collide, col_aabb: &Aabb2d) -> (Vec2, bool, bool) {
+fn collide_push(aabb: &Aabb2d, col: &Tile, col_aabb: &Aabb2d) -> (Vec2, bool, bool) {
     let lt = col_aabb.min.x - aabb.max.x;
     let rt = col_aabb.max.x - aabb.min.x;
     let up = col_aabb.max.y - aabb.min.y;
@@ -494,27 +482,27 @@ fn collide_push(aabb: &Aabb2d, col: &Collide, col_aabb: &Aabb2d) -> (Vec2, bool,
         (dist, sign)
     };
 
-    match col {
-        Collide::Square => {
+    match *col {
+        TILE_SQUARE => {
             if horz.abs() > vert.abs() {
                 (Vec2::new(0., vert), false, true)
             } else {
                 (Vec2::new(horz, 0.), true, false)
             }
         }
-        Collide::StepL | Collide::SlopeL => {
+        TILE_STEPL | TILE_SLOPEL => {
             // collide like a left triangle |\
             let (dist, sign) = pt_line_dist(true, aabb.min);
             if sign {
                 return (Vec2::ZERO, false, false);
             }
-            let dampv = matches!(col, Collide::StepL) || vert <= 0.;
+            let dampv = (*col == TILE_STEPL) || vert <= 0.;
             let (vert_dist, vert_v) = (vert.abs(), (Vec2::new(0., vert), false, dampv));
             let (horz_dist, horz_v) = (horz.abs(), (Vec2::new(horz, 0.), true, false));
             let diag_v = (
                 Vec2::new(FRAC_1_SQRT_2, FRAC_1_SQRT_2) * dist,
                 false,
-                matches!(col, Collide::StepL),
+                *col == TILE_STEPL,
             );
             if dampv && vert_dist < horz_dist && vert_dist < dist {
                 vert_v
@@ -524,20 +512,20 @@ fn collide_push(aabb: &Aabb2d, col: &Collide, col_aabb: &Aabb2d) -> (Vec2, bool,
                 diag_v
             }
         }
-        Collide::StepR | Collide::SlopeR => {
+        TILE_STEPR | TILE_SLOPER => {
             // collide like a right triangle /|
             let p = Vec2::new(aabb.max.x, aabb.min.y);
             let (dist, sign) = pt_line_dist(false, p);
             if sign {
                 return (Vec2::ZERO, false, false);
             }
-            let dampv = matches!(col, Collide::StepR) || vert <= 0.;
+            let dampv = (*col == TILE_STEPR) || vert <= 0.;
             let (vert_dist, vert_v) = (vert.abs(), (Vec2::new(0., vert), false, dampv));
             let (horz_dist, horz_v) = (horz.abs(), (Vec2::new(horz, 0.), true, false));
             let diag_v = (
                 Vec2::new(-FRAC_1_SQRT_2, FRAC_1_SQRT_2) * dist,
                 false,
-                matches!(col, Collide::StepR),
+                *col == TILE_STEPR,
             );
             if dampv && vert_dist < horz_dist && vert_dist < dist {
                 vert_v
@@ -547,6 +535,7 @@ fn collide_push(aabb: &Aabb2d, col: &Collide, col_aabb: &Aabb2d) -> (Vec2, bool,
                 diag_v
             }
         }
+        _ => unreachable!(),
     }
 }
 
@@ -558,7 +547,7 @@ pub fn check_collide(
     time: Res<Time>,
     mut update_rem: ResMut<PhysicsTick>,
     mut ctl: Query<(&Transform, &mut Movement), With<Control>>,
-    col: Query<(&Transform, &Collide)>,
+    col: Query<(&Transform, &Tile)>,
     mut dbg: Query<&mut DebugUi>,
 ) {
     let (t, mut v) = ctl.single_mut();
@@ -699,29 +688,6 @@ pub fn pan_camera(
     }
 }
 
-pub fn animate_texture(mut tex: Query<(&mut TextureAtlas, &TextureAnimate)>, time: Res<Time>) {
-    for (mut atlas, anim) in &mut tex {
-        let (beg, end) = (anim.idx_beg, anim.idx_end);
-        let len = end + 1 - beg;
-        let n = time.elapsed_seconds() / anim.frame_len;
-        let n = n as usize;
-        match anim.cycle {
-            Cycle::PingPong => {
-                let n = n % (len * 2 - 2);
-                if n < len {
-                    atlas.index = beg + n;
-                } else {
-                    atlas.index = beg + (len - (n - len) - 2);
-                }
-            }
-            Cycle::Loop => {
-                let n = n % len;
-                atlas.index = beg + n;
-            }
-        }
-    }
-}
-
 pub fn debug_draw(mut gizmos: Gizmos, mut dbg: Query<(&mut Text, &DebugUi)>) {
     let (mut txt, dbg) = dbg.single_mut();
     txt.sections = (dbg.text.iter())
@@ -738,11 +704,11 @@ pub fn debug_draw(mut gizmos: Gizmos, mut dbg: Query<(&mut Text, &DebugUi)>) {
         };
         for (i, (col, aabb)) in dbg.collisions.iter().enumerate() {
             let color = Color::rgb(1. - (i as f32 * n), 0., 0.);
-            match col {
-                Collide::Square => {
+            match *col {
+                TILE_SQUARE => {
                     gizmos.rect_2d(aabb.center(), 0., aabb.max - aabb.min, color);
                 }
-                Collide::StepL | Collide::SlopeL => {
+                TILE_STEPL | TILE_SLOPEL => {
                     gizmos.linestrip_2d(
                         [
                             aabb.min,
@@ -753,7 +719,7 @@ pub fn debug_draw(mut gizmos: Gizmos, mut dbg: Query<(&mut Text, &DebugUi)>) {
                         color,
                     );
                 }
-                Collide::StepR | Collide::SlopeR => {
+                TILE_STEPR | TILE_SLOPER => {
                     gizmos.linestrip_2d(
                         [
                             aabb.min,
@@ -764,6 +730,7 @@ pub fn debug_draw(mut gizmos: Gizmos, mut dbg: Query<(&mut Text, &DebugUi)>) {
                         color,
                     );
                 }
+                _ => unreachable!(),
             }
         }
         if let Some(aabb) = &dbg.ctl_aabb {
@@ -844,13 +811,12 @@ pub fn save_map(tiles: Query<(&Transform, &Tile)>) {
     for row in map.iter() {
         for x in row {
             match x {
-                0 => bmp_buf.extend([0x00, 0x00, 0x00]), // black
-                1 => bmp_buf.extend([0xff, 0xff, 0xff]), // white
-                2 => bmp_buf.extend([0x00, 0x00, 0xff]), // red
-                3 => bmp_buf.extend([0xff, 0x00, 0x00]), // blue
-                4 => bmp_buf.extend([0x00, 0xff, 0x00]), // green
-                5 => bmp_buf.extend([0x00, 0x88, 0xff]), // orange
-                6 => bmp_buf.extend([0x00, 0xff, 0xff]), // yellow
+                0 => bmp_buf.extend([0x00, 0x00, 0x00]), // black  - empty
+                1 => bmp_buf.extend([0xff, 0xff, 0xff]), // white  - Square
+                2 => bmp_buf.extend([0x00, 0x00, 0xff]), // red    - StepR
+                3 => bmp_buf.extend([0xff, 0x00, 0x00]), // blue   - StepL
+                4 => bmp_buf.extend([0x00, 0x88, 0xff]), // orange - SlopeR
+                5 => bmp_buf.extend([0x00, 0xff, 0x00]), // green  - SlopeL
                 _ => unimplemented!(),
             }
         }

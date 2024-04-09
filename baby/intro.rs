@@ -3,7 +3,6 @@ use bevy::{
     prelude::*,
     render::camera::ScalingMode,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
-    transform::commands,
 };
 use std::collections::HashMap as Map;
 
@@ -21,10 +20,12 @@ impl DebugUi {
 }
 
 pub fn draw_debug(mut dbg: Query<(&mut Text, &DebugUi)>) {
-    let (mut txt, dbg) = dbg.single_mut();
-    txt.sections = (dbg.text.iter())
-        .map(|(k, v)| TextSection::new(format!("{k}: {v}\n"), default()))
-        .collect();
+    if cfg!(debug_assertions) {
+        let (mut txt, dbg) = dbg.single_mut();
+        txt.sections = (dbg.text.iter())
+            .map(|(k, v)| TextSection::new(format!("{k}: {v}\n"), default()))
+            .collect();
+    }
 }
 
 // ------------------------------- Intro Cutscene -------------------------------
@@ -742,17 +743,21 @@ pub fn setup(
 
 pub fn cleanup(
     mut commands: Commands,
-    mut camera: Query<Entity, With<MainCamera>>,
-    mut sprites: Query<Entity, With<Sprite>>,
-    mut meshes: Query<Entity, With<Mesh2dHandle>>,
+    camera: Query<Entity, With<MainCamera>>,
+    sprites: Query<Entity, With<Sprite>>,
+    meshes: Query<Entity, With<Mesh2dHandle>>,
+    sounds: Query<Entity, With<Handle<AudioSource>>>,
 ) {
-    let camera = camera.get_single_mut().unwrap();
+    let camera = camera.get_single().unwrap();
     commands.entity(camera).despawn();
-    for s in sprites.iter_mut() {
+    for s in sprites.iter() {
         commands.entity(s).despawn();
     }
-    for m in meshes.iter_mut() {
+    for m in meshes.iter() {
         commands.entity(m).despawn();
+    }
+    for s in sounds.iter() {
+        commands.entity(s).despawn();
     }
     println!("cleaning up intro");
 }

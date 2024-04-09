@@ -48,7 +48,6 @@ fn main() {
         // Game
         .add_plugins(level::DebugGamePlugin)
         .insert_resource(level::PhysicsTick(0.))
-        .insert_resource(level::TileTypes(vec![default()]))
         .add_systems(OnEnter(AppState::Game), level::setup)
         .add_systems(
             Update,
@@ -63,7 +62,7 @@ fn main() {
         )
         .add_systems(
             Update,
-            level::animate_texture.run_if(in_state(AppState::Game)),
+            intro::animate_texture.run_if(in_state(AppState::Game)),
         )
         .run();
 }
