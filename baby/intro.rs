@@ -3,9 +3,12 @@ use bevy::{
     prelude::*,
     render::camera::ScalingMode,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
+    transform::commands,
 };
 use bevy_editor_pls::egui::{emath::inverse_lerp, lerp};
 use std::collections::HashMap as Map;
+
+use crate::AppState;
 
 #[derive(Component, Default)]
 pub struct DebugUi {
@@ -420,6 +423,12 @@ pub fn animate_texture(mut tex: Query<(&mut TextureAtlas, &TextureAnimate)>, tim
     }
 }
 
+pub fn check_kbd(kbd: Res<ButtonInput<KeyCode>>, mut next_state: ResMut<NextState<AppState>>) {
+    if kbd.pressed(KeyCode::Space) {
+        next_state.set(AppState::Game);
+    }
+}
+
 pub fn setup_anim(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -722,6 +731,19 @@ pub fn setup(
     });
 }
 
-pub fn cleanup() {
+pub fn cleanup(
+    mut commands: Commands,
+    mut camera: Query<Entity, With<MainCamera>>,
+    mut sprites: Query<Entity, With<Sprite>>,
+    mut meshes: Query<Entity, With<Mesh2dHandle>>,
+) {
+    let camera = camera.get_single_mut().unwrap();
+    commands.entity(camera).despawn();
+    for s in sprites.iter_mut() {
+        commands.entity(s).despawn();
+    }
+    for m in meshes.iter_mut() {
+        commands.entity(m).despawn();
+    }
     println!("cleaning up intro");
 }

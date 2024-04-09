@@ -12,7 +12,6 @@ fn main() {
             }),
             ..default()
         }))
-        .insert_resource(ClearColor(Color::rgb(0.2, 0.2, 0.2)))
         .add_event::<level::Quit>()
         .add_systems(Startup, (level::setup, level::setup_graphics).chain())
         .add_systems(

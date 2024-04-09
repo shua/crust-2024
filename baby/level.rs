@@ -185,6 +185,7 @@ impl Tile {
 }
 
 pub fn setup(mut command: Commands) {
+    command.insert_resource(ClearColor(Color::rgb(0.2, 0.2, 0.2)));
     command.insert_resource(PhysicsTick(0.));
     command.insert_resource(TileTypes(vec![default()]));
 }
