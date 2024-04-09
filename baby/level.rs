@@ -11,9 +11,9 @@ use bevy::{
 };
 
 #[derive(Component)]
-struct Control;
+pub struct Control;
 #[derive(Component, Clone, Copy, Default, Debug)]
-enum Collide {
+pub enum Collide {
     #[default]
     Square,
     StepL,
@@ -22,36 +22,40 @@ enum Collide {
     SlopeR,
 }
 #[derive(Resource)]
-struct PhysicsTick(f32);
+pub struct PhysicsTick(pub f32);
 #[derive(Component, Default)]
-struct Movement {
+pub struct Movement {
     ctl: Vec2,
     force: Vec2,
     out: Vec2,
     climb: bool,
 }
 #[derive(Component, Deref, DerefMut, Clone, Copy, Debug)]
-struct Tile(u8);
+pub struct Tile(u8);
 #[derive(Event)]
-struct Quit; // custom quit event used to save map before actual AppExit
+pub struct Quit; // custom quit event used to save map before actual AppExit
 #[derive(Resource, Default, Deref)]
-struct TileTypes(Vec<(Color, Collide, Option<(Handle<Image>, (f32, f32), f32)>)>);
+pub struct TileTypes(pub Vec<(Color, Collide, Option<(Handle<Image>, (f32, f32), f32)>)>);
 
-#[derive(Component, Clone, Copy)]
-struct TextureAnimate {
-    frame_len: f32,
-    cycle: Cycle,
-    idx_beg: usize,
-    idx_end: usize,
-}
-#[derive(Clone, Copy)]
-enum Cycle {
-    PingPong,
-    Loop,
+use crate::intro::Cycle;
+use crate::intro::TextureAnimate;
+
+pub struct DebugGamePlugin;
+impl Plugin for DebugGamePlugin {
+    fn build(&self, app: &mut App) {
+        if cfg!(debug_assertions) {
+            app.add_systems(OnEnter(crate::AppState::Game), debug_setup)
+                .add_systems(
+                    PostUpdate,
+                    // (debug_check_mouse, debug_draw).run_if(in_state(crate::AppState::Game)),
+                    (debug_draw).run_if(in_state(crate::AppState::Game)),
+                );
+        }
+    }
 }
 
 #[derive(Component, Default)]
-struct DebugUi {
+pub struct DebugUi {
     text: Map<&'static str, String>,
     collisions: Vec<(Collide, Aabb2d)>,
     ctl_aabb: Option<Aabb2d>,
@@ -64,108 +68,137 @@ impl DebugUi {
     }
 }
 #[derive(Component)]
-struct MainCamera;
-
-fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Baby".into(),
-                resolution: (800., 600.).into(),
-                ..default()
-            }),
-            ..default()
-        }))
-        .insert_resource(ClearColor(Color::rgb(0.2, 0.2, 0.2)))
-        .insert_resource(PhysicsTick(0.))
-        .insert_resource(TileTypes(vec![default()]))
-        .add_event::<Quit>()
-        .add_systems(Startup, setup_graphics)
-        .add_systems(
-            Update,
-            (check_kbd, check_collide, update_movement, update_camera).chain(),
-        )
-        .add_systems(Update, (check_mouse, on_quit, animate_texture))
-        .add_systems(PostUpdate, draw_debug)
-        .run();
-}
+pub struct MainCamera;
 
 const TILE_SZ: f32 = 50.;
-const MAP: (Vec2, usize, [u8; 27 * 71]) = (
+const MAP: (Vec2, usize, [u8; 27 * 112]) = (
     Vec2::new(-200.0, -400.0),
     27,
     [
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 4, 1, 5, 0, 0, 0, 0, 0, // 0
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 1
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 2
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 3
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, // 4
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 5
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 6
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, // 7
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 8
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 9
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, // 10
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 11
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 12
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, // 13
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 14
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 15
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 16
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 17
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, // 18
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 19
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 20
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 21
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 22
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 23
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 24
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 25
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 26
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 27
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 28
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 29
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, // 30
-        0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, // 31
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 32
-        0, 0, 0, 0, 0, 0, 0, 3, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 33
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, // 34
-        0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 35
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 4, 1, 5, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, // 36
-        0, 0, 0, 0, 0, 0, 0, 3, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, // 37
-        1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, // 38
-        1, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, // 39
-        1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 40
-        1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 1, // 41
-        1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 1, // 42
-        1, 0, 0, 0, 0, 0, 1, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 1, // 43
-        1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 44
-        1, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 45
-        3, 0, 0, 0, 0, 0, 4, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 46
-        1, 5, 0, 0, 0, 0, 1, 5, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 47
-        3, 0, 0, 0, 0, 4, 1, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 48
-        1, 5, 0, 0, 0, 0, 1, 0, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 49
-        3, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 50
-        1, 5, 0, 0, 0, 0, 1, 5, 0, 1, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 51
-        1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 52
-        1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 53
-        1, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 54
-        1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 55
-        1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 56
-        1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 57
-        1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 1, // 58
-        1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 1, // 59
-        1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 1, // 60
-        1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, // 61
-        1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, // 62
-        1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, // 63
-        1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, // 64
-        1, 0, 1, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, // 65
-        1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, // 66
-        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 67
-        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 68
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 69
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 70
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 1, // 0
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 1
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 2
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 1, // 3
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 1, // 4
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, // 5
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1, // 6
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 1, // 7
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 1, // 8
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 1, // 9
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 10
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 11
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 12
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 13
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 14
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 15
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 16
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 17
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 18
+        1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 19
+        1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 20
+        1, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 21
+        1, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 22
+        1, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 23
+        1, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 24
+        1, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 25
+        1, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 26
+        1, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 27
+        1, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 28
+        1, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 29
+        1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 30
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 31
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 32
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 33
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 34
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 35
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 36
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 37
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 38
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 39
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 40
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 41
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 4, 1, 5, 0, 0, 0, 0, 1, // 42
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 43
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 44
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 45
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 1, // 46
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 47
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 48
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 1, // 49
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 50
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 51
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 1, // 52
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 53
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 54
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 1, // 55
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 56
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 57
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 58
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 59
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 1, // 60
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 61
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 62
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 63
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 64
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 65
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 66
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 67
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 68
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 69
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 70
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 71
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, // 72
+        1, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, // 73
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 74
+        1, 0, 0, 0, 0, 0, 0, 3, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 75
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, // 76
+        1, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 77
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 4, 1, 5, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, // 78
+        1, 0, 0, 0, 0, 0, 0, 3, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, // 79
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, // 80
+        1, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, // 81
+        1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 82
+        1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 1, // 83
+        1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 1, // 84
+        1, 0, 0, 0, 0, 0, 1, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 1, // 85
+        1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 86
+        1, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 87
+        3, 0, 0, 0, 0, 0, 4, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 88
+        1, 5, 0, 0, 0, 0, 1, 5, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 89
+        3, 0, 0, 0, 0, 4, 1, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 90
+        1, 5, 0, 0, 0, 0, 1, 0, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 91
+        3, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 92
+        1, 5, 0, 0, 0, 0, 1, 5, 0, 1, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 93
+        1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 94
+        1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 95
+        1, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 96
+        1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 97
+        1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 98
+        1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // 99
+        1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0,
+        1, // 100
+        1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0,
+        1, // 101
+        1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0,
+        1, // 102
+        1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
+        1, // 103
+        1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0,
+        1, // 104
+        1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0,
+        1, // 105
+        1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0,
+        1, // 106
+        1, 0, 1, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0,
+        1, // 107
+        1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0,
+        1, // 108
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        1, // 109
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        1, // 110
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, // 111
     ],
 );
 
@@ -208,7 +241,22 @@ impl Tile {
     }
 }
 
-fn setup_graphics(
+fn debug_setup(mut command: Commands) {
+    command.spawn((
+        DebugUi::default(),
+        TextBundle {
+            style: Style {
+                position_type: PositionType::Absolute,
+                top: Val::Px(10.),
+                left: Val::Px(10.),
+                ..default()
+            },
+            ..default()
+        },
+    ));
+}
+
+pub fn setup(
     mut command: Commands,
     assets: Res<AssetServer>,
     mut win: Query<&mut Window, With<PrimaryWindow>>,
@@ -227,18 +275,8 @@ fn setup_graphics(
             ..default()
         },
     ));
-    command.spawn((
-        DebugUi::default(),
-        TextBundle {
-            style: Style {
-                position_type: PositionType::Absolute,
-                top: Val::Px(10.),
-                left: Val::Px(10.),
-                ..default()
-            },
-            ..default()
-        },
-    ));
+
+    if cfg!(debug_assertions) {}
 
     let layout = TextureAtlasLayout::from_grid(Vec2::new(251., 377.), 3, 2, None, None);
     command.spawn((
@@ -294,6 +332,7 @@ fn setup_graphics(
         (Color::BLUE, Collide::StepL, Some(garbage_bg.clone())),
         (Color::ORANGE, Collide::SlopeR, Some(garbage_bg.clone())),
         (Color::GREEN, Collide::SlopeL, Some(garbage_bg.clone())),
+        (Color::YELLOW, Collide::Square, None),
     ]);
     let map_origin = MAP.0;
     for (i, &t) in MAP.2.iter().rev().enumerate() {
@@ -311,13 +350,17 @@ fn setup_graphics(
     }
 }
 
-fn check_kbd(
+pub fn check_kbd(
     kbd: Res<ButtonInput<KeyCode>>,
-    mut quit: EventWriter<Quit>,
+    mut quit: EventWriter<AppExit>,
     mut ctl: Query<&mut Movement, With<Control>>,
+    tiles: Query<(&Transform, &Tile)>,
 ) {
     if kbd.pressed(KeyCode::Escape) {
-        quit.send(Quit);
+        if cfg!(debug_assertions) {
+            save_map(tiles);
+        }
+        quit.send(AppExit);
     }
 
     let mut vx = 0.;
@@ -328,7 +371,7 @@ fn check_kbd(
     if kbd.pressed(KeyCode::ArrowRight) {
         vx += 1.;
     }
-    if kbd.pressed(KeyCode::ArrowUp) {
+    if kbd.pressed(KeyCode::Space) {
         vy += 1.;
     }
     if kbd.pressed(KeyCode::ArrowDown) {
@@ -341,7 +384,7 @@ fn check_kbd(
     }
 }
 
-fn check_mouse(
+pub fn debug_check_mouse(
     mouse: Res<ButtonInput<MouseButton>>,
     win: Query<&Window, With<PrimaryWindow>>,
     mut cam: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
@@ -419,11 +462,11 @@ fn check_mouse(
 // if aabb is intersecting col_aabb, col is square, and it would
 //
 // col determines the shape and characteristics:
-// - square is a square block. standing on this dampens gravity's pull
-// - stepL/R are left or right steps
+// - Square is a square block. standing on this dampens gravity's pull
+// - StepL/R are left or right steps
 //   the collider is the shape of left or right triangles,
 //   and they allow you to stand on them by dampening gravity
-// - slopeL/R are left or right slopes,
+// - SlopeL/R are left or right slopes,
 //   the collider is the shape of left or right triangles,
 //   but standing on them does not dampen gravity
 //
@@ -513,7 +556,7 @@ fn collide_push(aabb: &Aabb2d, col: &Collide, col_aabb: &Aabb2d) -> (Vec2, bool,
 // if there are any collisions, then reduce velocity until there aren't
 //
 // this is not working correctly as it sees collisions where it shouldn't
-fn check_collide(
+pub fn check_collide(
     time: Res<Time>,
     mut update_rem: ResMut<PhysicsTick>,
     mut ctl: Query<(&Transform, &mut Movement), With<Control>>,
@@ -548,11 +591,6 @@ fn check_collide(
             }
         }
 
-        // sort bottom-to-top, left-to-right
-        // collisions.sort_by(|c1, c2| {
-        //     (c2.min.y.total_cmp(&c1.min.y)).then(c1.min.x.total_cmp(&c2.min.x))
-        // });
-
         // sort by distance to aabb
         collisions.sort_by(|c1, c2| c1.0.total_cmp(&c2.0));
 
@@ -567,8 +605,6 @@ fn check_collide(
                 if push == Vec2::ZERO {
                     continue;
                 }
-                println!("{col:?} {col_aabb:?}");
-                println!("{push:?} {damph} {dampv}");
                 pushes.push((i, *col, push, damph, dampv));
 
                 if dampv {
@@ -592,7 +628,7 @@ fn check_collide(
         }
         dt -= 1.;
     }
-    if !collisions.is_empty() {
+    if cfg!(debug_assertions) && !collisions.is_empty() {
         let mut dbg = dbg.single_mut();
         dbg.watch("vctl", v.ctl);
         dbg.watch("vforce", v.force);
@@ -614,7 +650,7 @@ fn check_collide(
     }
 }
 
-fn update_movement(mut movers: Query<(&mut Transform, &Movement, &mut Sprite)>) {
+pub fn update_movement(mut movers: Query<(&mut Transform, &Movement, &mut Sprite)>) {
     for (mut t, v, mut s) in &mut movers {
         t.translation.x += v.out.x;
         t.translation.y += v.out.y;
@@ -638,16 +674,14 @@ fn update_movement(mut movers: Query<(&mut Transform, &Movement, &mut Sprite)>) 
     }
 }
 
-fn update_camera(
-    mut trans: Query<&mut Transform>,
-    cam: Query<Entity, With<Camera>>,
-    ctl: Query<Entity, With<Control>>,
+pub fn pan_camera(
+    mut cam: Query<&mut Transform, (With<Camera>, Without<Control>)>,
+    ctl: Query<&Transform, With<Control>>,
 ) {
-    let ctl = ctl.single();
-    let ctl = trans.get(ctl).unwrap().translation;
-
-    let cam = cam.single();
-    let mut cam = trans.get_mut(cam).unwrap();
+    // move the camera to track the player when he gets too close to the edge of the window
+    let ctl = ctl.single().translation;
+    let mut cam = cam.single_mut();
+    // hardcoded 100x100 pixel box
     let cam_bound = 100.;
     if (ctl.x - cam.translation.x).abs() > cam_bound {
         let dx = ctl.x - cam.translation.x;
@@ -667,7 +701,7 @@ fn update_camera(
     }
 }
 
-fn animate_texture(mut tex: Query<(&mut TextureAtlas, &TextureAnimate)>, time: Res<Time>) {
+pub fn animate_texture(mut tex: Query<(&mut TextureAtlas, &TextureAnimate)>, time: Res<Time>) {
     for (mut atlas, anim) in &mut tex {
         let (beg, end) = (anim.idx_beg, anim.idx_end);
         let len = end + 1 - beg;
@@ -690,7 +724,7 @@ fn animate_texture(mut tex: Query<(&mut TextureAtlas, &TextureAnimate)>, time: R
     }
 }
 
-fn draw_debug(mut gizmos: Gizmos, mut dbg: Query<(&mut Text, &DebugUi)>) {
+pub fn debug_draw(mut gizmos: Gizmos, mut dbg: Query<(&mut Text, &DebugUi)>) {
     let (mut txt, dbg) = dbg.single_mut();
     txt.sections = (dbg.text.iter())
         .map(|(k, v)| TextSection::new(format!("{k}: {v}\n"), default()))
@@ -733,7 +767,6 @@ fn draw_debug(mut gizmos: Gizmos, mut dbg: Query<(&mut Text, &DebugUi)>) {
                     );
                 }
             }
-            // gizmos.ray_2d(*origin, *ray, Color::GREEN);
         }
         if let Some(aabb) = &dbg.ctl_aabb {
             gizmos.rect_2d(aabb.center(), 0., aabb.half_size() * 2., Color::GREEN);
@@ -743,120 +776,113 @@ fn draw_debug(mut gizmos: Gizmos, mut dbg: Query<(&mut Text, &DebugUi)>) {
     gizmos.rect_2d(cursor, 0., Vec2::new(TILE_SZ, TILE_SZ), Color::GREEN);
 }
 
-fn on_quit(
-    quit: EventReader<Quit>,
-    tiles: Query<(&Transform, &Tile), With<Tile>>,
-    mut exit: EventWriter<AppExit>,
-) {
-    if !quit.is_empty() {
-        let mut data: Vec<_> = tiles
-            .iter()
-            .map(|(t, s)| (t.translation.xy(), *s))
-            .collect();
-        data.sort_by(|(t1, _), (t2, _)| match t1.y.total_cmp(&t2.y) {
-            std::cmp::Ordering::Equal => t1.x.total_cmp(&t2.x),
-            c => c,
-        });
-        let mut min = data[0].0;
-        let mut max = data[data.len() - 1].0;
-        for (d, _) in &data {
-            if d.x < min.x {
-                min.x = d.x;
-            }
-            if d.x > max.x {
-                max.x = d.x;
-            }
+pub fn save_map(tiles: Query<(&Transform, &Tile)>) {
+    let mut data: Vec<_> = tiles
+        .iter()
+        .map(|(t, s)| (t.translation.xy(), *s))
+        .collect();
+    data.sort_by(|(t1, _), (t2, _)| match t1.y.total_cmp(&t2.y) {
+        std::cmp::Ordering::Equal => t1.x.total_cmp(&t2.x),
+        c => c,
+    });
+    let mut min = data[0].0;
+    let mut max = data[data.len() - 1].0;
+    for (d, _) in &data {
+        if d.x < min.x {
+            min.x = d.x;
         }
-
-        let width = ((max.x - min.x) / TILE_SZ) as usize + 1;
-        let height = ((max.y - min.y) / TILE_SZ) as usize + 1;
-        println!("const MAP: (Vec2, usize, [u8; {width} * {height}]) = (");
-        println!("  Vec2::new({:?}, {:?}),", min.x.floor(), min.y.floor());
-        println!("  {width},");
-        println!("  [");
-        let mut map = vec![vec![0u8; width]; height];
-        for (trans, tile) in data {
-            let trans = (trans - min) / TILE_SZ;
-            map[trans.y as usize][trans.x as usize] = tile.0;
+        if d.x > max.x {
+            max.x = d.x;
         }
-        for (y, row) in map.iter().rev().enumerate() {
-            print!("    ");
-            for t in row {
-                print!("{t}, ");
-            }
-            println!(" // {y}");
-        }
-        println!("  ],");
-        println!(");");
-
-        const BMP_SZ: usize = 0x02;
-        const BMP_PX_W: usize = 0x12;
-        const BMP_PX_H: usize = 0x16;
-        const BMP_DATA_SZ: usize = 0x22;
-        const BMP_START_DATA: usize = 0x36;
-        let mut bmp_buf = vec![
-            // BMP Header
-            0x42, 0x4D, // "BM"
-            0x00, 0x00, 0x00, 0x00, // size (todo)
-            0x00, 0x00, // (unused)
-            0x00, 0x00, // (unused)
-            0x36, 0x00, 0x00, 0x00, // offset to pixel array
-            // DIB Header
-            0x28, 0x00, 0x00, 0x00, // size of DIB header
-            0x00, 0x00, 0x00, 0x00, // width of bitmap in pixels (todo)
-            0x00, 0x00, 0x00, 0x00, // height of bitmap in pixels (todo)
-            0x01, 0x00, // # of color planes
-            0x18, 0x00, // # of bits per-pixel (24 bit)
-            0x00, 0x00, 0x00, 0x00, // compression (unused)
-            0x00, 0x00, 0x00, 0x00, // size of bitmap data (todo)
-            0x13, 0x0B, 0x00, 0x00, // print resolution (default)
-            0x13, 0x0B, 0x00, 0x00, // print resolution (default)
-            0x00, 0x00, 0x00, 0x00, // # of colors in palette
-            0x00, 0x00, 0x00, 0x00, // (unused)
-                  // pixel array/bitmap data
-        ];
-        for row in map.iter() {
-            for x in row {
-                match x {
-                    0 => bmp_buf.extend([0x00, 0x00, 0x00]), // black
-                    1 => bmp_buf.extend([0xff, 0xff, 0xff]), // white
-                    2 => bmp_buf.extend([0x00, 0x00, 0xff]), // red
-                    3 => bmp_buf.extend([0xff, 0x00, 0x00]), // blue
-                    4 => bmp_buf.extend([0x00, 0xff, 0x00]), // green
-                    5 => bmp_buf.extend([0x00, 0x88, 0xff]), // orange
-                    _ => unimplemented!(),
-                }
-            }
-            let pad = (row.len() * 3) % 4;
-            if pad != 0 {
-                let pad = 4 - pad;
-                for _ in 0..pad {
-                    bmp_buf.push(0x00);
-                }
-            }
-        }
-        let data_sz = bmp_buf.len() - BMP_START_DATA;
-        let file_sz = bmp_buf.len();
-        let px_w = if (map[0].len() % 4) != 0 {
-            map[0].len() + 4 - (map[0].len() % 4)
-        } else {
-            map[0].len()
-        };
-        let px_h = map.len();
-
-        use std::io::Write as _;
-        for (off, val) in [
-            (BMP_SZ, file_sz),
-            (BMP_PX_W, px_w),
-            (BMP_PX_H, px_h),
-            (BMP_DATA_SZ, data_sz),
-        ] {
-            (&mut bmp_buf[off..])
-                .write(&(val as u32).to_le_bytes())
-                .unwrap();
-        }
-        std::fs::write("./map.bmp", bmp_buf).unwrap();
-
-        exit.send(AppExit);
     }
+
+    let width = ((max.x - min.x) / TILE_SZ) as usize + 1;
+    let height = ((max.y - min.y) / TILE_SZ) as usize + 1;
+    println!("const MAP: (Vec2, usize, [u8; {width} * {height}]) = (");
+    println!("  Vec2::new({:?}, {:?}),", min.x.floor(), min.y.floor());
+    println!("  {width},");
+    println!("  [");
+    let mut map = vec![vec![0u8; width]; height];
+    for (trans, tile) in data {
+        let trans = (trans - min) / TILE_SZ;
+        map[trans.y as usize][trans.x as usize] = tile.0;
+    }
+    for (y, row) in map.iter().rev().enumerate() {
+        print!("    ");
+        for t in row {
+            print!("{t}, ");
+        }
+        println!(" // {y}");
+    }
+    println!("  ],");
+    println!(");");
+
+    const BMP_SZ: usize = 0x02;
+    const BMP_PX_W: usize = 0x12;
+    const BMP_PX_H: usize = 0x16;
+    const BMP_DATA_SZ: usize = 0x22;
+    const BMP_START_DATA: usize = 0x36;
+    let mut bmp_buf = vec![
+        // BMP Header
+        0x42, 0x4D, // "BM"
+        0x00, 0x00, 0x00, 0x00, // size (todo)
+        0x00, 0x00, // (unused)
+        0x00, 0x00, // (unused)
+        0x36, 0x00, 0x00, 0x00, // offset to pixel array
+        // DIB Header
+        0x28, 0x00, 0x00, 0x00, // size of DIB header
+        0x00, 0x00, 0x00, 0x00, // width of bitmap in pixels (todo)
+        0x00, 0x00, 0x00, 0x00, // height of bitmap in pixels (todo)
+        0x01, 0x00, // # of color planes
+        0x18, 0x00, // # of bits per-pixel (24 bit)
+        0x00, 0x00, 0x00, 0x00, // compression (unused)
+        0x00, 0x00, 0x00, 0x00, // size of bitmap data (todo)
+        0x13, 0x0B, 0x00, 0x00, // print resolution (default)
+        0x13, 0x0B, 0x00, 0x00, // print resolution (default)
+        0x00, 0x00, 0x00, 0x00, // # of colors in palette
+        0x00, 0x00, 0x00, 0x00, // (unused)
+              // pixel array/bitmap data
+    ];
+    for row in map.iter() {
+        for x in row {
+            match x {
+                0 => bmp_buf.extend([0x00, 0x00, 0x00]), // black
+                1 => bmp_buf.extend([0xff, 0xff, 0xff]), // white
+                2 => bmp_buf.extend([0x00, 0x00, 0xff]), // red
+                3 => bmp_buf.extend([0xff, 0x00, 0x00]), // blue
+                4 => bmp_buf.extend([0x00, 0xff, 0x00]), // green
+                5 => bmp_buf.extend([0x00, 0x88, 0xff]), // orange
+                6 => bmp_buf.extend([0x00, 0xff, 0xff]), // yellow
+                _ => unimplemented!(),
+            }
+        }
+        let pad = (row.len() * 3) % 4;
+        if pad != 0 {
+            let pad = 4 - pad;
+            for _ in 0..pad {
+                bmp_buf.push(0x00);
+            }
+        }
+    }
+    let data_sz = bmp_buf.len() - BMP_START_DATA;
+    let file_sz = bmp_buf.len();
+    let px_w = if (map[0].len() % 4) != 0 {
+        map[0].len() + 4 - (map[0].len() % 4)
+    } else {
+        map[0].len()
+    };
+    let px_h = map.len();
+
+    use std::io::Write as _;
+    for (off, val) in [
+        (BMP_SZ, file_sz),
+        (BMP_PX_W, px_w),
+        (BMP_PX_H, px_h),
+        (BMP_DATA_SZ, data_sz),
+    ] {
+        (&mut bmp_buf[off..])
+            .write(&(val as u32).to_le_bytes())
+            .unwrap();
+    }
+    std::fs::write("./map.bmp", bmp_buf).unwrap();
 }

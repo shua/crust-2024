@@ -6,6 +6,7 @@ const WINDOW_HEIGHT: f32 = 600.;
 const PILLARBOX_WIDTH: f32 = 2000.;
 
 mod intro;
+mod level;
 
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash)]
 enum AppState {
@@ -23,6 +24,7 @@ fn main() {
             }),
             ..default()
         }))
+        // Intro
         .insert_state(AppState::Intro)
         .add_systems(
             OnEnter(AppState::Intro),
@@ -31,15 +33,36 @@ fn main() {
         .add_systems(
             Update,
             (
-                intro::sequence_cues.run_if(in_state(AppState::Intro)),
-                intro::sequence_camera.run_if(in_state(AppState::Intro)),
-                intro::animate_texture.run_if(in_state(AppState::Intro)),
-            ),
+                intro::sequence_cues,
+                intro::sequence_camera,
+                intro::animate_texture,
+            )
+                .run_if(in_state(AppState::Intro)),
         )
         .add_systems(
             PostUpdate,
-            (intro::draw_debug.run_if(in_state(AppState::Intro))),
+            intro::draw_debug.run_if(in_state(AppState::Intro)),
         )
         .add_systems(OnExit(AppState::Intro), intro::cleanup)
+        // Game
+        .add_plugins(level::DebugGamePlugin)
+        .insert_resource(level::PhysicsTick(0.))
+        .insert_resource(level::TileTypes(vec![default()]))
+        .add_systems(OnEnter(AppState::Game), level::setup)
+        .add_systems(
+            Update,
+            (
+                level::check_kbd,
+                level::check_collide,
+                level::update_movement,
+                level::pan_camera,
+            )
+                .run_if(in_state(AppState::Game))
+                .chain(),
+        )
+        .add_systems(
+            Update,
+            level::animate_texture.run_if(in_state(AppState::Game)),
+        )
         .run();
 }
