@@ -415,7 +415,7 @@ const CAM_CUE: &'static [CQ] = &[
         tran: (Vec3::new(0., 0., 0.), Vec3::new(60., -185., 0.)),
     },
     CQ {
-        time: (71., 71.5),
+        time: (65., 65.5),
         scale: (0.4, 0.8),
         tran: (Vec3::new(60., -185., 0.), Vec3::new(60., -120., 0.)),
     },
