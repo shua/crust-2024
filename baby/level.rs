@@ -31,6 +31,8 @@ pub struct Tile(u8);
 pub struct Quit; // custom quit event used to save map before actual AppExit
 #[derive(Component)]
 pub struct WinText;
+#[derive(Resource)]
+pub struct End(bool);
 
 impl Tile {
     const SZ: f32 = 50.;
@@ -322,22 +324,37 @@ pub fn setup(
         },
         ..default()
     });
+    // command.spawn((
+    //     WinText,
+    //     TextBundle {
+    //         text: Text::from_section(
+    //             "Good job trash baby",
+    //             TextStyle {
+    //                 font_size: 32.,
+    //                 ..default()
+    //             },
+    //         ),
+    //         transform: Transform::from_xyz(0., 0., 10.),
+    //         visibility: Visibility::Hidden,
+    //         style: Style {
+    //             position_type: PositionType::Absolute,
+    //             align_self: AlignSelf::Center,
+    //             justify_self: JustifySelf::Center,
+    //             ..default()
+    //         },
+    //         ..default()
+    //     },
+    // ));
+
+    command.insert_resource(End(false));
     command.spawn((
         WinText,
-        TextBundle {
-            text: Text::from_section(
-                "Good job trash baby",
-                TextStyle {
-                    font_size: 32.,
-                    ..default()
-                },
-            ),
-            transform: Transform::from_xyz(0., 0., 10.),
+        SpriteBundle {
             visibility: Visibility::Hidden,
-            style: Style {
-                position_type: PositionType::Absolute,
-                align_self: AlignSelf::Center,
-                justify_self: JustifySelf::Center,
+            texture: assets.load("scenes/end.png"),
+            transform: Transform {
+                scale: Vec3::ONE,
+                translation: Vec3::new(0., 0., 20.),
                 ..default()
             },
             ..default()
@@ -415,6 +432,8 @@ pub fn check_kbd(
     mut quit: EventWriter<AppExit>,
     mut ctl: Query<&mut Movement, With<Control>>,
     tiles: Query<(&Transform, &Tile)>,
+    mut win_text: Query<&mut Visibility, With<WinText>>,
+    mut end: ResMut<End>,
 ) {
     if kbd.pressed(KeyCode::Escape) {
         if cfg!(debug_assertions) {
@@ -436,6 +455,11 @@ pub fn check_kbd(
     }
     if kbd.pressed(KeyCode::ArrowDown) {
         vy -= 1.;
+    }
+
+    if kbd.pressed(KeyCode::KeyO) {
+        *win_text.single_mut() = Visibility::Visible;
+        end.0 = true;
     }
 
     let v = Vec2::new(vx, vy);
@@ -621,6 +645,7 @@ pub fn check_collide(
     col: Query<(&Transform, &Tile)>,
     mut dbg: Query<&mut DebugUi>,
     mut win_text: Query<&mut Visibility, With<WinText>>,
+    mut end: ResMut<End>,
 ) {
     let (t, mut v) = ctl.single_mut();
     if v.ctl + v.force == Vec2::ZERO {
@@ -629,6 +654,7 @@ pub fn check_collide(
     }
     if t.translation.y > (MAP_TOP - 2. * Tile::SZ - 3.) {
         *win_text.single_mut() = Visibility::Visible;
+        end.0 = true;
     }
 
     let mut dt = update_rem.0;
@@ -742,10 +768,16 @@ pub fn update_movement(mut movers: Query<(&mut Transform, &Movement, &mut Sprite
 pub fn pan_camera(
     mut cam: Query<&mut Transform, (With<Camera>, Without<Control>)>,
     ctl: Query<&Transform, With<Control>>,
+    end: Res<End>,
 ) {
     // move the camera to track the player when he gets too close to the edge of the window
     let ctl = ctl.single().translation;
     let mut cam = cam.single_mut();
+    if end.0 {
+        cam.translation = Vec3::ZERO;
+        cam.scale = Vec3::ONE;
+        return;
+    }
     // hardcoded 100x100 pixel box
     let cam_bound = 100.;
     if (ctl.x - cam.translation.x).abs() > cam_bound {
