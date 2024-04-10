@@ -10,9 +10,14 @@ opt-level = 3
 [profile.dev]
 opt-level = 1
 
-# Use this for release
-# bevy = { version = "0.13.1", features = ["wav"] } 
+[dependencies]
+-# Use this for release
+-# bevy = { version = "0.13.1", features = ["wav"] }
+
+# enable dynamic linking for dev
 bevy = { version = "0.13.1", features = ["wav", "dynamic_linking"] } 
+# bevy_rapier2d = "0.18.0"
+# bevy_editor_pls = "0.8.1"
 bevy_embedded_assets = "0.10.2"
 
 # for embedding icons into windows exe's

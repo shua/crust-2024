@@ -1,3 +1,6 @@
+// hide console on windows
+#![windows_subsystem = "windows"]
+
 use bevy::prelude::*;
 use bevy_embedded_assets::{EmbeddedAssetPlugin, PluginMode};
 
