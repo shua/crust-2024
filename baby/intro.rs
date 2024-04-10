@@ -128,7 +128,7 @@ const ANIM_CUE_JAZZ: &'static [Q] = &[
     Q::Paused("car_idle", false),
     Q::Vol("car_idle", 0.),
     Q::Tick(4.),
-    Q::Vol("car_idle", 0.3),
+    Q::Vol("car_idle", 0.2),
     // brake squeak
     Q::Tick(0.5),
     Q::Paused("car_brake", false),
@@ -158,6 +158,7 @@ const ANIM_CUE_JAZZ: &'static [Q] = &[
     Q::Tick(1.),
     Q::Tran("car", -50., -150., 0.),
     Q::Rot("car", 0.),
+    Q::Vol("car_peels_out", 0.5),
     Q::Paused("car_peels_out", false),
     Q::Vol("car_idle", 1.0),
     // car sound fades away
@@ -392,6 +393,13 @@ const ANIM_CUE_WAIL: &'static [Q] = &[
     Q::Rot("baby_thrown", 1.6),
     Q::Tick(0.6),
     Q::Rot("baby_thrown", 1.5),
+    Q::Tick(2.0),
+    Q::Rot("baby_thrown", 1.4),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.6),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.5),
+    Q::Tick(4.0),
     // sudden baby reveal, upbeat wacky music plays
     Q::Tran("baby", 60., -200., -10.),
     Q::Despawn("baby_thrown"),
@@ -407,7 +415,7 @@ const CAM_CUE: &'static [CQ] = &[
         tran: (Vec3::new(0., 0., 0.), Vec3::new(60., -185., 0.)),
     },
     CQ {
-        time: (62., 62.5),
+        time: (71., 71.5),
         scale: (0.4, 0.8),
         tran: (Vec3::new(60., -185., 0.), Vec3::new(60., -120., 0.)),
     },
