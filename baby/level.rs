@@ -316,7 +316,7 @@ pub fn setup(
         },
         texture: assets.load("level/fg.png"),
         transform: Transform {
-            translation: img_pos.extend(1.),
+            translation: img_pos.extend(2.),
             scale: Vec3::ONE,
             ..default()
         },
