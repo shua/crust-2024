@@ -24,8 +24,10 @@ fn main() {
             }),
             ..default()
         }))
-        // Intro
+        // Shared
         .insert_state(AppState::Intro)
+        .add_systems(Update, intro::animate_texture)
+        // Intro
         .add_systems(
             OnEnter(AppState::Intro),
             (intro::setup, intro::setup_anim).chain(),
@@ -33,10 +35,9 @@ fn main() {
         .add_systems(
             Update,
             (
-                intro::check_kbd,
                 intro::sequence_cues,
                 intro::sequence_camera,
-                intro::animate_texture,
+                intro::check_kbd,
             )
                 .run_if(in_state(AppState::Intro)),
         )
@@ -59,10 +60,6 @@ fn main() {
             )
                 .run_if(in_state(AppState::Game))
                 .chain(),
-        )
-        .add_systems(
-            Update,
-            intro::animate_texture.run_if(in_state(AppState::Game)),
         )
         .run();
 }

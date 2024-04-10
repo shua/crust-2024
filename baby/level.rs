@@ -1,6 +1,10 @@
 use std::collections::HashMap as Map;
 use std::f32::consts::PI;
 
+use crate::intro::Cycle;
+use crate::intro::TextureAnimate;
+use crate::AppState;
+
 use bevy::{
     app::AppExit,
     input::mouse::MouseWheel,
@@ -25,33 +29,40 @@ pub struct Movement {
 pub struct Tile(u8);
 #[derive(Event)]
 pub struct Quit; // custom quit event used to save map before actual AppExit
+#[derive(Component)]
+pub struct WinText;
 
-const TILE_TYPES: [Color; 6] = [
-    Color::NONE,
-    Color::WHITE,
-    Color::RED,
-    Color::BLUE,
-    Color::ORANGE,
-    Color::GREEN,
-];
-const TILE_SQUARE: Tile = Tile(1);
-const TILE_STEPR: Tile = Tile(2);
-const TILE_STEPL: Tile = Tile(3);
-const TILE_SLOPER: Tile = Tile(4);
-const TILE_SLOPEL: Tile = Tile(5);
+impl Tile {
+    const SZ: f32 = 50.;
+    const NUM: usize = 6;
+    const SQUARE: Tile = Tile(1);
+    const STEPR: Tile = Tile(2);
+    const STEPL: Tile = Tile(3);
+    const SLOPER: Tile = Tile(4);
+    const SLOPEL: Tile = Tile(5);
 
-use crate::intro::Cycle;
-use crate::intro::TextureAnimate;
+    const COLORS: [Color; 6] = [
+        Color::NONE,
+        Color::WHITE,
+        Color::RED,
+        Color::BLUE,
+        Color::ORANGE,
+        Color::GREEN,
+    ];
+}
 
 pub struct DebugGamePlugin;
 impl Plugin for DebugGamePlugin {
     fn build(&self, app: &mut App) {
         if cfg!(debug_assertions) {
-            app.add_systems(OnEnter(crate::AppState::Game), debug_setup)
+            app.add_systems(OnEnter(AppState::Game), debug_setup)
                 .add_systems(
                     PostUpdate,
-                    // (debug_check_mouse, debug_draw).run_if(in_state(crate::AppState::Game)),
-                    (debug_draw).run_if(in_state(crate::AppState::Game)),
+                    (
+                        debug_check_mouse, //
+                        debug_draw,
+                    )
+                        .run_if(in_state(AppState::Game)),
                 );
         }
     }
@@ -73,7 +84,6 @@ impl DebugUi {
 
 use crate::intro::MainCamera;
 
-const TILE_SZ: f32 = 50.;
 const MAP: (Vec2, usize, [u8; 27 * 112]) = (
     Vec2::new(-200.0, -400.0),
     27,
@@ -204,6 +214,10 @@ const MAP: (Vec2, usize, [u8; 27 * 112]) = (
         1, // 111
     ],
 );
+const MAP_TOP: f32 = {
+    let map_bot = MAP.0.y;
+    ((MAP.2.len() / MAP.1) as f32) * Tile::SZ + map_bot
+};
 
 impl Tile {
     fn spawn<'c>(
@@ -212,10 +226,14 @@ impl Tile {
         pos: Vec3,
         tex_cfg: (Handle<Image>, (f32, f32), f32),
     ) -> bevy::ecs::system::EntityCommands<'c> {
-        let color = TILE_TYPES[t as usize];
+        let color = if cfg!(debug_assertions) {
+            Tile::COLORS[t as usize]
+        } else {
+            Color::NONE
+        };
         let (hndl, (w, h), s) = tex_cfg;
-        let u = (pos.x * s / TILE_SZ).rem_euclid(w);
-        let v = ((-pos.y) * s / TILE_SZ).rem_euclid(h);
+        let u = (pos.x * s / Tile::SZ).rem_euclid(w);
+        let v = ((-pos.y) * s / Tile::SZ).rem_euclid(h);
         let rect = Some(Rect::new(u, v, u + s, v + s));
         let tex = hndl.clone();
 
@@ -230,7 +248,7 @@ impl Tile {
                 },
                 transform: Transform {
                     translation: pos,
-                    scale: Vec3::new(TILE_SZ, TILE_SZ, 1.),
+                    scale: Vec3::new(Tile::SZ, Tile::SZ, 1.),
                     ..default()
                 },
                 texture: tex,
@@ -273,6 +291,58 @@ pub fn setup(
             ..default()
         },
     ));
+    let img_size = Vec2::new(
+        (MAP.1 + 1) as f32 * Tile::SZ,
+        ((MAP.2.len() / MAP.1) + 1) as f32 * Tile::SZ + 110.,
+    );
+    let img_pos = MAP.0 + (img_size / 2.) - Vec2::new(0.5 * Tile::SZ, 157.);
+    command.spawn(SpriteBundle {
+        sprite: Sprite {
+            custom_size: Some(img_size),
+            ..default()
+        },
+        texture: assets.load("level/bg.png"),
+        transform: Transform {
+            translation: img_pos.extend(-1.),
+            scale: Vec3::ONE,
+            ..default()
+        },
+        ..default()
+    });
+    command.spawn(SpriteBundle {
+        sprite: Sprite {
+            custom_size: Some(img_size),
+            ..default()
+        },
+        texture: assets.load("level/fg.png"),
+        transform: Transform {
+            translation: img_pos.extend(1.),
+            scale: Vec3::ONE,
+            ..default()
+        },
+        ..default()
+    });
+    command.spawn((
+        WinText,
+        TextBundle {
+            text: Text::from_section(
+                "Good job trash baby",
+                TextStyle {
+                    font_size: 32.,
+                    ..default()
+                },
+            ),
+            transform: Transform::from_xyz(0., 0., 10.),
+            visibility: Visibility::Hidden,
+            style: Style {
+                position_type: PositionType::Absolute,
+                align_self: AlignSelf::Center,
+                justify_self: JustifySelf::Center,
+                ..default()
+            },
+            ..default()
+        },
+    ));
 
     let layout = TextureAtlasLayout::from_grid(Vec2::new(251., 377.), 3, 2, None, None);
     command.spawn((
@@ -304,7 +374,8 @@ pub fn setup(
         },
     ));
 
-    let garbage_bg = (assets.load("tiled_garbage.png"), (1500., 1000.), 200.);
+    // let garbage_bg = (assets.load("tiled_garbage.png"), (1500., 1000.), 200.);
+    let garbage_bg = (Handle::<Image>::default(), (1500., 1000.), 200.);
     command.spawn(SpriteBundle {
         sprite: Sprite {
             color: Color::rgb(0.2, 0.2, 0.5),
@@ -324,7 +395,7 @@ pub fn setup(
             continue;
         }
         let (x, y) = (MAP.1 - (i % MAP.1) - 1, i / MAP.1);
-        let v = Vec2::new(x as f32, y as f32) * Vec2::splat(TILE_SZ);
+        let v = Vec2::new(x as f32, y as f32) * Vec2::splat(Tile::SZ);
         Tile::spawn(
             &mut command,
             t,
@@ -360,7 +431,7 @@ pub fn check_kbd(
     if kbd.pressed(KeyCode::ArrowRight) {
         vx += 1.;
     }
-    if kbd.pressed(KeyCode::Space) {
+    if kbd.pressed(KeyCode::Space) || kbd.pressed(KeyCode::ArrowUp) {
         vy += 1.;
     }
     if kbd.pressed(KeyCode::ArrowDown) {
@@ -411,19 +482,19 @@ pub fn debug_check_mouse(
             }
 
             // rotate tile type
-            tile.0 = (tile.0 + 1) % (TILE_TYPES.len() as u8);
+            tile.0 = (tile.0 + 1) % (Tile::NUM as u8);
             if tile.0 == 0 {
                 // type 0 is special, it means no tile
                 commands.get_entity(e).unwrap().despawn();
             } else {
-                let color = TILE_TYPES[tile.0 as usize];
+                let color = Tile::COLORS[tile.0 as usize];
                 s.color = color;
             }
             return;
         }
 
         // no tile, need to insert
-        let tile_pos = (cursor / TILE_SZ).round() * TILE_SZ;
+        let tile_pos = (cursor / Tile::SZ).round() * Tile::SZ;
         Tile::spawn(
             &mut commands,
             1,
@@ -483,26 +554,26 @@ fn collide_push(aabb: &Aabb2d, col: &Tile, col_aabb: &Aabb2d) -> (Vec2, bool, bo
     };
 
     match *col {
-        TILE_SQUARE => {
+        Tile::SQUARE => {
             if horz.abs() > vert.abs() {
                 (Vec2::new(0., vert), false, true)
             } else {
                 (Vec2::new(horz, 0.), true, false)
             }
         }
-        TILE_STEPL | TILE_SLOPEL => {
+        Tile::STEPL | Tile::SLOPEL => {
             // collide like a left triangle |\
             let (dist, sign) = pt_line_dist(true, aabb.min);
             if sign {
                 return (Vec2::ZERO, false, false);
             }
-            let dampv = (*col == TILE_STEPL) || vert <= 0.;
+            let dampv = (*col == Tile::STEPL) || vert <= 0.;
             let (vert_dist, vert_v) = (vert.abs(), (Vec2::new(0., vert), false, dampv));
             let (horz_dist, horz_v) = (horz.abs(), (Vec2::new(horz, 0.), true, false));
             let diag_v = (
                 Vec2::new(FRAC_1_SQRT_2, FRAC_1_SQRT_2) * dist,
                 false,
-                *col == TILE_STEPL,
+                *col == Tile::STEPL,
             );
             if dampv && vert_dist < horz_dist && vert_dist < dist {
                 vert_v
@@ -512,20 +583,20 @@ fn collide_push(aabb: &Aabb2d, col: &Tile, col_aabb: &Aabb2d) -> (Vec2, bool, bo
                 diag_v
             }
         }
-        TILE_STEPR | TILE_SLOPER => {
+        Tile::STEPR | Tile::SLOPER => {
             // collide like a right triangle /|
             let p = Vec2::new(aabb.max.x, aabb.min.y);
             let (dist, sign) = pt_line_dist(false, p);
             if sign {
                 return (Vec2::ZERO, false, false);
             }
-            let dampv = (*col == TILE_STEPR) || vert <= 0.;
+            let dampv = (*col == Tile::STEPR) || vert <= 0.;
             let (vert_dist, vert_v) = (vert.abs(), (Vec2::new(0., vert), false, dampv));
             let (horz_dist, horz_v) = (horz.abs(), (Vec2::new(horz, 0.), true, false));
             let diag_v = (
                 Vec2::new(-FRAC_1_SQRT_2, FRAC_1_SQRT_2) * dist,
                 false,
-                *col == TILE_STEPR,
+                *col == Tile::STEPR,
             );
             if dampv && vert_dist < horz_dist && vert_dist < dist {
                 vert_v
@@ -549,21 +620,28 @@ pub fn check_collide(
     mut ctl: Query<(&Transform, &mut Movement), With<Control>>,
     col: Query<(&Transform, &Tile)>,
     mut dbg: Query<&mut DebugUi>,
+    mut win_text: Query<&mut Visibility, With<WinText>>,
 ) {
     let (t, mut v) = ctl.single_mut();
     if v.ctl + v.force == Vec2::ZERO {
         v.out = Vec2::ZERO;
         return;
     }
+    if t.translation.y > (MAP_TOP - 2. * Tile::SZ - 3.) {
+        *win_text.single_mut() = Visibility::Visible;
+    }
 
     let mut dt = update_rem.0;
     // 60 physics ticks a second
     dt += time.delta_seconds() * 60.;
+    if dt < 1. {
+        update_rem.0 = dt;
+    }
     let mut aabb = Aabb2d::new(t.translation.xy(), t.scale.xy() / 2.);
     v.climb = false;
     let mut collisions = vec![];
     let mut pushes = vec![];
-    while dt > 1. {
+    while dt >= 1. {
         collisions = vec![];
         v.force += Vec2::new(0., -9.8 / 60.);
         aabb = Aabb2d::new(aabb.center() + v.ctl.xy() + v.force.xy(), aabb.half_size());
@@ -705,10 +783,10 @@ pub fn debug_draw(mut gizmos: Gizmos, mut dbg: Query<(&mut Text, &DebugUi)>) {
         for (i, (col, aabb)) in dbg.collisions.iter().enumerate() {
             let color = Color::rgb(1. - (i as f32 * n), 0., 0.);
             match *col {
-                TILE_SQUARE => {
+                Tile::SQUARE => {
                     gizmos.rect_2d(aabb.center(), 0., aabb.max - aabb.min, color);
                 }
-                TILE_STEPL | TILE_SLOPEL => {
+                Tile::STEPL | Tile::SLOPEL => {
                     gizmos.linestrip_2d(
                         [
                             aabb.min,
@@ -719,7 +797,7 @@ pub fn debug_draw(mut gizmos: Gizmos, mut dbg: Query<(&mut Text, &DebugUi)>) {
                         color,
                     );
                 }
-                TILE_STEPR | TILE_SLOPER => {
+                Tile::STEPR | Tile::SLOPER => {
                     gizmos.linestrip_2d(
                         [
                             aabb.min,
@@ -737,8 +815,8 @@ pub fn debug_draw(mut gizmos: Gizmos, mut dbg: Query<(&mut Text, &DebugUi)>) {
             gizmos.rect_2d(aabb.center(), 0., aabb.half_size() * 2., Color::GREEN);
         }
     }
-    let cursor = (dbg.cursor / TILE_SZ).round() * TILE_SZ;
-    gizmos.rect_2d(cursor, 0., Vec2::new(TILE_SZ, TILE_SZ), Color::GREEN);
+    let cursor = (dbg.cursor / Tile::SZ).round() * Tile::SZ;
+    gizmos.rect_2d(cursor, 0., Vec2::new(Tile::SZ, Tile::SZ), Color::GREEN);
 }
 
 pub fn save_map(tiles: Query<(&Transform, &Tile)>) {
@@ -761,15 +839,15 @@ pub fn save_map(tiles: Query<(&Transform, &Tile)>) {
         }
     }
 
-    let width = ((max.x - min.x) / TILE_SZ) as usize + 1;
-    let height = ((max.y - min.y) / TILE_SZ) as usize + 1;
+    let width = ((max.x - min.x) / Tile::SZ) as usize + 1;
+    let height = ((max.y - min.y) / Tile::SZ) as usize + 1;
     println!("const MAP: (Vec2, usize, [u8; {width} * {height}]) = (");
     println!("  Vec2::new({:?}, {:?}),", min.x.floor(), min.y.floor());
     println!("  {width},");
     println!("  [");
     let mut map = vec![vec![0u8; width]; height];
     for (trans, tile) in data {
-        let trans = (trans - min) / TILE_SZ;
+        let trans = (trans - min) / Tile::SZ;
         map[trans.y as usize][trans.x as usize] = tile.0;
     }
     for (y, row) in map.iter().rev().enumerate() {

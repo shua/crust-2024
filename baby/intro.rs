@@ -1,4 +1,5 @@
 use bevy::{
+    app::AppExit,
     audio::PlaybackMode,
     prelude::*,
     render::camera::ScalingMode,
@@ -237,6 +238,7 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Tick(1.0),
     Q::Paused("sad_song_jazz", true),
     Q::Tran("baby", 60., -200., 0.),
+    Q::Tick(1.0),
 ];
 const CAM_CUE: &'static [CQ] = &[
     CQ {
@@ -271,11 +273,12 @@ pub enum Cycle {
 }
 #[derive(Resource, Default)]
 pub struct CueSequencer {
-    pub playing: bool,
+    playing: bool,
     audio: Map<Name, (Vec<(f32, f32)>, Vec<(f32, bool)>)>,
     despawn: Map<Name, f32>,
     flip: Map<Name, Vec<(f32, bool)>>,
     time: f32,
+    end: f32,
 }
 
 impl CueSequencer {
@@ -340,8 +343,13 @@ pub fn sequence_cues(
     mut sequence: ResMut<CueSequencer>,
     time: Res<Time>,
     mut dbg: Query<&mut DebugUi>,
+    mut next_state: ResMut<NextState<AppState>>,
 ) {
     if !sequence.playing {
+        return;
+    }
+    if sequence.time >= sequence.end {
+        next_state.set(AppState::Game);
         return;
     }
 
@@ -433,9 +441,16 @@ pub fn animate_texture(mut tex: Query<(&mut TextureAtlas, &TextureAnimate)>, tim
     }
 }
 
-pub fn check_kbd(kbd: Res<ButtonInput<KeyCode>>, mut next_state: ResMut<NextState<AppState>>) {
+pub fn check_kbd(
+    kbd: Res<ButtonInput<KeyCode>>,
+    mut next_state: ResMut<NextState<AppState>>,
+    mut quit: EventWriter<AppExit>,
+) {
     if kbd.pressed(KeyCode::Space) {
         next_state.set(AppState::Game);
+    }
+    if kbd.pressed(KeyCode::Escape) {
+        quit.send(AppExit);
     }
 }
 
@@ -449,6 +464,7 @@ pub fn setup_anim(
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     let mut pos: Map<&'static str, Vec3> = Map::new();
+    let mut end = 0.;
     for cue in ANIM_CUE.iter() {
         match cue {
             Q::Tran(name, x, y, z) => {
@@ -456,9 +472,13 @@ pub fn setup_anim(
                     pos.insert(name, Vec3::new(*x, *y, *z));
                 }
             }
+            Q::Tick(t) => {
+                end += t;
+            }
             _ => {}
         }
     }
+    sequence.end = end;
 
     let mut entities: Map<Name, Entity> = Map::new();
     for ar in ANIM_RSC.iter() {
