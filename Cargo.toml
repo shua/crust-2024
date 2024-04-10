@@ -11,8 +11,8 @@ opt-level = 3
 opt-level = 1
 
 [dependencies]
--# Use this for release
--# bevy = { version = "0.13.1", features = ["wav"] }
+# Use this for release
+# bevy = { version = "0.13.1", features = ["wav"] }
 
 # enable dynamic linking for dev
 bevy = { version = "0.13.1", features = ["wav", "dynamic_linking"] } 
