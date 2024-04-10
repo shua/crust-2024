@@ -29,6 +29,9 @@ pub fn draw_debug(mut dbg: Query<(&mut Text, &DebugUi)>) {
     }
 }
 
+#[derive(Component)]
+pub struct Subtitle;
+
 // ------------------------------- Intro Cutscene -------------------------------
 enum Q {
     // advance time
@@ -45,6 +48,8 @@ enum Q {
     Vol(&'static str, f32),
     // despawn
     Despawn(&'static str),
+    // subtitle
+    Subtitle(&'static str),
 }
 // Camera cues
 struct CQ {
@@ -97,11 +102,10 @@ const ANIM_RSC: &'static [AR] = &[
     AR::Sound("thump", "sounds/thump.wav", true),
     AR::Sound("car_peels_out", "sounds/car-peels-out.wav", true),
 ];
-const ANIM_CUE: &'static [Q] = &[
+const ANIM_CUE_JAZZ: &'static [Q] = &[
     Q::Tran("baby", 60., -200., -10.),
     Q::Vol("city", 0.),
     Q::Paused("city", false),
-    Q::Paused("sad_song", true),
     Q::Paused("sad_song_jazz", true),
     Q::Paused("car_idle", true),
     Q::Paused("car_brake", true),
@@ -110,12 +114,14 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Paused("car_peels_out", true),
     Q::Paused("woosh", true),
     Q::Paused("thump", true),
+    Q::Subtitle("for my son"),
     // background soundscape fades in
     Q::Tick(3.),
     Q::Vol("city", 0.8),
     // scene reveal
     Q::Tick(1.),
     Q::Despawn("screen"),
+    Q::Subtitle(""),
     // car moves into frame, engine sound gets louder
     Q::Tick(2.),
     Q::Tran("car", 700., -50., 0.),
@@ -161,12 +167,12 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Tran("car", 700., -50., 0.),
     Q::Vol("car_idle", 0.),
     // somber music plays
-    // Q::Paused("sad_song", false),
     // hold camera for few seconds
     // camera slowly zooms in on baby
     // baby wriggles on ground
-    // Q::Tick(1.0), // for sad_song
-    Q::Tick(7.0), // for sad_song_jazz
+    Q::Tick(0.5),
+    Q::Subtitle("poor lonely baby"),
+    Q::Tick(6.5),
     Q::Rot("baby_thrown", 1.6),
     Q::Tick(0.6),
     Q::Rot("baby_thrown", 1.4),
@@ -175,6 +181,39 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Tick(0.6),
     Q::Rot("baby_thrown", 1.5),
     Q::Tick(2.0),
+    Q::Subtitle("born in the summer"),
+    Q::Rot("baby_thrown", 1.4),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.6),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.5),
+    Q::Tick(2.3),
+    Q::Rot("baby_thrown", 1.6),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.4),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.6),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.5),
+    Q::Tick(3.0),
+    Q::Subtitle("abandoned in the trash"),
+    Q::Rot("baby_thrown", 1.6),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.4),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.6),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.5),
+    Q::Tick(2.0),
+    Q::Rot("baby_thrown", 1.6),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.4),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.6),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.5),
+    Q::Tick(2.0),
+    Q::Subtitle("his parents did not want him"),
     Q::Rot("baby_thrown", 1.4),
     Q::Tick(0.6),
     Q::Rot("baby_thrown", 1.6),
@@ -197,8 +236,127 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Tick(0.6),
     Q::Rot("baby_thrown", 1.5),
     Q::Tick(2.0),
+    Q::Rot("baby_thrown", 1.4),
+    Q::Tick(0.6),
     Q::Rot("baby_thrown", 1.6),
     Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.5),
+    // sudden baby reveal, upbeat wacky music plays
+    Q::Tran("baby", 60., -200., -10.),
+    Q::Despawn("baby_thrown"),
+    Q::Tick(1.0),
+    Q::Paused("sad_song_jazz", true),
+    Q::Tran("baby", 60., -200., 0.),
+    Q::Tick(1.0),
+];
+const ANIM_CUE_WAIL: &'static [Q] = &[
+    Q::Tran("baby", 60., -200., -10.),
+    Q::Vol("city", 0.),
+    Q::Paused("city", false),
+    Q::Paused("sad_song", true),
+    Q::Paused("car_idle", true),
+    Q::Paused("car_brake", true),
+    Q::Paused("car_win_open", true),
+    Q::Paused("car_win_close", true),
+    Q::Paused("car_peels_out", true),
+    Q::Paused("woosh", true),
+    Q::Paused("thump", true),
+    Q::Subtitle("for my son"),
+    // background soundscape fades in
+    Q::Tick(3.),
+    Q::Vol("city", 0.8),
+    // scene reveal
+    Q::Tick(1.),
+    Q::Subtitle(""),
+    Q::Despawn("screen"),
+    // car moves into frame, engine sound gets louder
+    Q::Tick(2.),
+    Q::Tran("car", 700., -50., 0.),
+    Q::Paused("car_idle", false),
+    Q::Vol("car_idle", 0.),
+    Q::Tick(4.),
+    Q::Vol("car_idle", 0.3),
+    // brake squeak
+    Q::Tick(0.5),
+    Q::Paused("car_brake", false),
+    // car stops
+    Q::Tick(0.25),
+    Q::Tran("car", -50., -150., 0.),
+    // window rolls down
+    Q::Tick(1.),
+    Q::Paused("car_win_open", false),
+    // baby thrown
+    Q::Tick(3.5),
+    Q::Tran("baby_thrown", -30., -100., -10.),
+    Q::Rot("baby_thrown", 1.5),
+    Q::Paused("woosh", false),
+    // baby hits ground
+    Q::Tick(1.),
+    Q::Tran("baby_thrown", 30., -220., 1.),
+    Q::Paused("thump", false),
+    // window rolls up
+    Q::Tick(1.),
+    Q::Paused("car_win_close", false),
+    // car turns around
+    Q::Tick(4.),
+    Q::Flip("car", false),
+    // car burnout
+    Q::Tick(1.),
+    Q::Tran("car", -50., -150., 0.),
+    Q::Rot("car", 0.),
+    Q::Paused("car_peels_out", false),
+    Q::Vol("car_idle", 1.0),
+    // car sound fades away
+    Q::Tick(0.2),
+    Q::Rot("car", 0.7),
+    Q::Tick(1.8),
+    Q::Tran("car", 700., -50., 0.),
+    Q::Vol("car_idle", 0.),
+    // somber music plays
+    Q::Paused("sad_song", false),
+    // hold camera for few seconds
+    // camera slowly zooms in on baby
+    // baby wriggles on ground
+    Q::Tick(1.0), // for sad_song
+    Q::Rot("baby_thrown", 1.6),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.4),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.6),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.5),
+    Q::Tick(1.5),
+    Q::Subtitle("poor lonely baby"),
+    Q::Tick(0.5),
+    Q::Rot("baby_thrown", 1.4),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.6),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.5),
+    Q::Tick(2.3),
+    Q::Rot("baby_thrown", 1.6),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.4),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.6),
+    Q::Subtitle(""),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.5),
+    Q::Tick(0.6),
+    Q::Subtitle("born in the summer"),
+    Q::Tick(2.4),
+    Q::Rot("baby_thrown", 1.6),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.4),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.6),
+    Q::Tick(0.6),
+    Q::Rot("baby_thrown", 1.5),
+    Q::Tick(2.0),
+    Q::Subtitle(""),
+    Q::Rot("baby_thrown", 1.6),
+    Q::Tick(0.6),
+    Q::Subtitle("abandoned in the trash"),
     Q::Rot("baby_thrown", 1.4),
     Q::Tick(0.6),
     Q::Rot("baby_thrown", 1.6),
@@ -216,7 +374,9 @@ const ANIM_CUE: &'static [Q] = &[
     Q::Rot("baby_thrown", 1.4),
     Q::Tick(0.6),
     Q::Rot("baby_thrown", 1.6),
+    Q::Subtitle(""),
     Q::Tick(0.6),
+    Q::Subtitle("his parents did not want him"),
     Q::Rot("baby_thrown", 1.5),
     Q::Tick(3.0),
     Q::Rot("baby_thrown", 1.6),
@@ -277,6 +437,7 @@ pub struct CueSequencer {
     audio: Map<Name, (Vec<(f32, f32)>, Vec<(f32, bool)>)>,
     despawn: Map<Name, f32>,
     flip: Map<Name, Vec<(f32, bool)>>,
+    subtitles: Vec<(f32, &'static str)>,
     time: f32,
     end: f32,
 }
@@ -333,11 +494,21 @@ impl CueSequencer {
         }
         flip
     }
+
+    fn get_subtitle(&mut self, time: f32) -> &'static str {
+        let (sub_cur, sub_next, s) = Self::get_curve(&self.subtitles, time).unwrap_or(("", "", 1.));
+        if s >= 1. {
+            sub_next
+        } else {
+            sub_cur
+        }
+    }
 }
 
 pub fn sequence_cues(
     mut names: Query<(Entity, &Name)>,
     audio: Query<&AudioSink>,
+    mut subtitle: Query<&mut Text, With<Subtitle>>,
     mut sprite: Query<&mut Sprite>,
     mut commands: Commands,
     mut sequence: ResMut<CueSequencer>,
@@ -379,6 +550,11 @@ pub fn sequence_cues(
                 s.flip_x = flip;
             }
         }
+    }
+    let mut subtitle = subtitle.single_mut();
+    let seq_subtitle = sequence.get_subtitle(t);
+    if subtitle.sections[0].value != seq_subtitle {
+        subtitle.sections[0].value = seq_subtitle.to_string();
     }
 }
 
@@ -463,9 +639,21 @@ pub fn setup_anim(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
+    let anim_cue = if (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+        % 2)
+        == 0
+    {
+        ANIM_CUE_JAZZ
+    } else {
+        ANIM_CUE_WAIL
+    };
+
     let mut pos: Map<&'static str, Vec3> = Map::new();
     let mut end = 0.;
-    for cue in ANIM_CUE.iter() {
+    for cue in anim_cue.iter() {
         match cue {
             Q::Tran(name, x, y, z) => {
                 if !pos.contains_key(name) {
@@ -587,9 +775,11 @@ pub fn setup_anim(
         let mut flip_next = None;
         let mut flip_cues = vec![];
 
+        let mut sub_next = None;
+        let mut sub_cues = vec![];
         let mut despawn = None;
 
-        for cue in ANIM_CUE.iter() {
+        for cue in anim_cue.iter() {
             match cue {
                 Q::Tran(kname, x, y, z) if *kname == name.as_str() => {
                     pos_next = Some(Vec3::new(*x, *y, *z));
@@ -609,6 +799,9 @@ pub fn setup_anim(
                 Q::Flip(kname, flip) if *kname == name.as_str() => {
                     flip_next = Some(*flip);
                 }
+                Q::Subtitle(sub) => {
+                    sub_next = Some(*sub);
+                }
                 Q::Tick(dt) => {
                     if let Some(pos_next) = pos_next.take() {
                         pos_frames.push(pos_next);
@@ -626,6 +819,9 @@ pub fn setup_anim(
                     }
                     if let Some(flip) = flip_next.take() {
                         flip_cues.push((t, flip));
+                    }
+                    if let Some(sub) = sub_next.take() {
+                        sub_cues.push((t, sub));
                     }
                     t += dt;
                 }
@@ -655,6 +851,10 @@ pub fn setup_anim(
 
         if let Some(flip) = flip_next.take() {
             flip_cues.push((t, flip));
+        }
+
+        if let Some(sub) = sub_next.take() {
+            sub_cues.push((t, sub));
         }
 
         if !(pos_frames.is_empty() && rot_frames.is_empty()) {
@@ -696,7 +896,31 @@ pub fn setup_anim(
         if !flip_cues.is_empty() {
             sequence.flip.insert(name.clone(), flip_cues);
         }
+
+        if !sub_cues.is_empty() {
+            sequence.subtitles = sub_cues;
+        }
     }
+
+    commands.spawn((
+        Subtitle,
+        TextBundle {
+            text: Text::from_section(
+                "",
+                TextStyle {
+                    font_size: 32.,
+                    ..default()
+                },
+            ),
+            style: Style {
+                position_type: PositionType::Absolute,
+                bottom: Val::Px(32.),
+                justify_self: JustifySelf::Center,
+                ..default()
+            },
+            ..default()
+        },
+    ));
 }
 
 pub fn setup(
@@ -767,6 +991,7 @@ pub fn cleanup(
     sprites: Query<Entity, With<Sprite>>,
     meshes: Query<Entity, With<Mesh2dHandle>>,
     sounds: Query<Entity, With<Handle<AudioSource>>>,
+    subtitle: Query<Entity, With<Subtitle>>,
 ) {
     let camera = camera.get_single().unwrap();
     commands.entity(camera).despawn();
@@ -779,6 +1004,7 @@ pub fn cleanup(
     for s in sounds.iter() {
         commands.entity(s).despawn();
     }
+    commands.entity(subtitle.single()).despawn();
     println!("cleaning up intro");
 }
 

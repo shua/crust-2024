@@ -486,7 +486,7 @@ pub fn debug_check_mouse(
             if tile.0 == 0 {
                 // type 0 is special, it means no tile
                 commands.get_entity(e).unwrap().despawn();
-            } else {
+            } else if cfg!(debug_assertions) {
                 let color = Tile::COLORS[tile.0 as usize];
                 s.color = color;
             }
