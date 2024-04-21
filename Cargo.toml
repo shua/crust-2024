@@ -3,6 +3,7 @@ name = "grossbaby"
 version = "0.1.0"
 edition = "2021"
 authors = ["shua <shua@isthisa.email>", "ddydsz"]
+default-run = "baby"
 
 # from https://bevy-cheatbook.github.io/pitfalls/performance.html
 [profile.dev.package."*"]
@@ -13,12 +14,13 @@ opt-level = 1
 [dependencies]
 # Use this for release
 bevy = { version = "0.13.1", features = ["wav"] }
-
 # enable dynamic linking for dev
 # bevy = { version = "0.13.1", features = ["wav", "dynamic_linking"] } 
-# bevy_rapier2d = "0.18.0"
-# bevy_editor_pls = "0.8.1"
+
 bevy_embedded_assets = "0.10.2"
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+wasm-bindgen = "0.2.92"
 
 # for embedding icons into windows exe's
 [build-dependencies]
@@ -27,3 +29,7 @@ embed-resource = "1.6.3"
 [[bin]]
 name = "baby"
 path = "baby/main.rs"
+
+[[bin]]
+name = "pkgweb"
+path = "pkgweb.rs"

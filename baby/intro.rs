@@ -638,6 +638,28 @@ pub fn check_kbd(
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = Date, js_name = now)]
+    fn date_now() -> f64;
+}
+#[cfg(target_arch = "wasm32")]
+fn time_secs() -> f64 {
+    date_now()
+}
+#[cfg(not(target_arch = "wasm32"))]
+fn time_secs() -> f64 {
+    {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f64()
+    }
+}
+
 pub fn setup_anim(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -647,13 +669,7 @@ pub fn setup_anim(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    let anim_cue = if (std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis()
-        % 2)
-        == 0
-    {
+    let anim_cue = if ((time_secs() * 1000.) % 2.) as u32 == 0 {
         ANIM_CUE_JAZZ
     } else {
         ANIM_CUE_WAIL

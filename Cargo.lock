@@ -1994,6 +1994,7 @@ dependencies = [
  "bevy",
  "bevy_embedded_assets",
  "embed-resource",
+ "wasm-bindgen",
 ]
 
 [[package]]
